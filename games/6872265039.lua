@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func) func() end
 local cloneref = cloneref or function(obj) return obj end
 
@@ -536,7 +537,7 @@ run(function()
 		layout.FillDirection = Enum.FillDirection.Horizontal
 		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		layout.VerticalAlignment = Enum.VerticalAlignment.Center
-		layout.Padding = UDim.new(0, 0)
+		layout.Padding = UDim.new(0, 4)  
 		layout.Parent = row
 		
 		local rank = Instance.new("ImageLabel")
@@ -548,16 +549,10 @@ run(function()
 		rAspect.AspectRatio = 1
 		rAspect.Parent = rank
 		
-		local spacer = Instance.new("Frame")
-		spacer.Name = "TwoSpace"
-		spacer.BackgroundTransparency = 1
-		spacer.Size = UDim2.fromScale(0.065, 1)
-		spacer.Parent = row
-		
 		local winGroup = Instance.new("Frame")
 		winGroup.Name = "WinGroup"
 		winGroup.BackgroundTransparency = 1
-		winGroup.Size = UDim2.fromScale(0.255, 1.05)
+		winGroup.Size = UDim2.fromScale(0.28, 1.05)  
 		winGroup.Parent = row
 		
 		local flame = Instance.new("ImageLabel")
@@ -566,7 +561,7 @@ run(function()
 		flame.Image = FLAME_IMAGE
 		flame.AnchorPoint = Vector2.new(0, 0.5)
 		flame.Position = UDim2.fromScale(0, 0.5)
-		flame.Size = UDim2.fromScale(0.275, 1.05)
+		flame.Size = UDim2.fromScale(0.24, 1.05)
 		flame.Parent = winGroup
 		
 		local fAspect = Instance.new("UIAspectRatioConstraint")
@@ -586,9 +581,16 @@ run(function()
 		num.TextSize = WIN_TEXT_SIZE
 		
 		num.AnchorPoint = Vector2.new(0, 0.5)
-		num.Position = UDim2.new(0.46, -WIN_TEXT_PULL_LEFT, 0.5, 0)
-		num.Size = UDim2.new(0.54, 0, 0.94, 0)
+		num.Position = UDim2.fromScale(0.28, 0.5) 
+		num.Size = UDim2.new(0.72, 0, 0.94, 0)   
 		num.Parent = winGroup
+		
+		local winLayout = Instance.new("UIListLayout")
+		winLayout.FillDirection = Enum.FillDirection.Horizontal
+		winLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		winLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		winLayout.Padding = UDim.new(0, 2)
+		winLayout.Parent = winGroup
 		
 		return bb
 	end
@@ -600,9 +602,6 @@ run(function()
 			if not USE_TEXT_SCALED then
 				num.TextSize = WIN_TEXT_SIZE
 			end
-			num.AnchorPoint = Vector2.new(0, 0.5)
-			num.Position = UDim2.new(0.46, -WIN_TEXT_PULL_LEFT, 0.5, 0)
-			num.Size = UDim2.new(0.54, 0, 0.94, 0)
 		end
 	end
 	
@@ -736,8 +735,12 @@ run(function()
 								num.TextSize = WIN_TEXT_SIZE
 							end
 						end
+						forceWinTextStyle(gui)
 					end
 				end
+			end
+			if TextSizeSlider and TextSizeSlider.Object then
+				TextSizeSlider.Object.Visible = not val
 			end
 		end,
 		Tooltip = 'Enable auto text scaling for winstreak number'
@@ -761,6 +764,7 @@ run(function()
 								num.TextSize = WIN_TEXT_SIZE
 							end
 						end
+						forceWinTextStyle(gui)
 					end
 				end
 			end
