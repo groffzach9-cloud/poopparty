@@ -30126,7 +30126,7 @@ run(function()
 	local TARGET_NAME = "cannon"
 	
 	local OFFSET_HELD = CFrame.new(0, 0, 0) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
-	local OFFSET_PLACED = CFrame.new(0, -2.0, 0) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
+	local OFFSET_PLACED = CFrame.new(0, -1.0, 0) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
 	
 	local tagged = setmetatable({}, { __mode = "k" })
 	local connections = {}
@@ -30381,14 +30381,6 @@ run(function()
 				task.wait()
 				attachReskinTo(child, OFFSET_PLACED)
 				task.wait()
-				local skin = child:FindFirstChild("LOCAL_CANNON_RESKIN")
-				if not (skin and skin:IsA("Model") and skin.PrimaryPart) then return end
-				local baseCF = skin.PrimaryPart.CFrame
-				local y = baseCF.Position.Y
-				local snappedY = math.floor(y)
-				local KUSH = snappedY - 1
-				local New = KUSH + 0.99
-				skin:PivotTo(CFrame.new(Vector3.new(baseCF.Position.X, New, baseCF.Position.Z)))
 			end
 		end)
 		table.insert(connections, conn)
