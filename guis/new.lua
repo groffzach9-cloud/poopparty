@@ -143,24 +143,6 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent, notif)
-    local oldIdentity
-    if setthreadidentity then
-        oldIdentity = setthreadidentity(8)
-    end
-    local blur = Instance.new('ImageLabel')
-    blur.Name = 'Blur'
-    blur.Size = UDim2.new(1, 89, 1, 52)
-    blur.Position = UDim2.fromOffset(-48, -31)
-    blur.BackgroundTransparency = 1
-    blur.Image = getcustomasset('newvape/assets/new/'..(notif and 'blurnotif' or 'blur')..'.png')
-    blur.ScaleType = Enum.ScaleType.Slice
-    blur.SliceCenter = Rect.new(52, 31, 261, 502)
-    blur.Parent = parent
-    if setthreadidentity and oldIdentity then
-        setthreadidentity(oldIdentity)
-    end
-    return blur
-end
 	local blur = Instance.new('ImageLabel')
 	blur.Name = 'Blur'
 	blur.Size = UDim2.new(1, 89, 1, 52)
