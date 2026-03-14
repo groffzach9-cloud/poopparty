@@ -1,4 +1,12 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+local run = function(func)
+	func()
+end
+
+local cloneref = cloneref or function(obj)
+	return obj
+end
+
 local function safeGetProto(func, index)
     if not func then return nil end
     local success, proto = pcall(debug.getconstant, func, index)
@@ -13,15 +21,24 @@ local run = function(func)
         warn('[AEROV4] module failed to load: ' .. tostring(err))
     end
 end
-local cloneref = cloneref or function(obj)
-	return obj
-end
 local vapeEvents = setmetatable({}, {
 	__index = function(self, index)
 		self[index] = Instance.new('BindableEvent')
 		return self[index]
 	end
 })
+getgenv().vapeEvents = vapeEvents
+
+local inventoryDebounce = false
+local function fireInventoryChanged()
+    if inventoryDebounce then return end
+    inventoryDebounce = true
+    task.spawn(function()
+        task.wait() 
+        vapeEvents.InventoryChanged:Fire()
+        inventoryDebounce = false
+    end)
+end
 
 local playersService = cloneref(game:GetService('Players'))
 local replicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
@@ -1223,7 +1240,7 @@ run(function()
 			store.inventory = newinv
 
 			if newinv ~= oldinv then
-				vapeEvents.InventoryChanged:Fire()
+				fireInventoryChanged()
 			end
 
 			if newinv.inventory.items ~= oldinv.inventory.items then
@@ -1292,29 +1309,6 @@ run(function()
 				},
 				player = select(5, ...)
 			}
-			local changedBlockPos = data.blockRef.blockPosition * 3
-			for i, v in cache do
-				local cachedTargetPos = v[1]
-				local cachedPath = v[3]
-				local shouldClear = false
-				
-				if (changedBlockPos - cachedTargetPos).Magnitude <= 30 then
-					shouldClear = true
-				else
-					for pathNode in cachedPath do
-						if (changedBlockPos - pathNode).Magnitude <= 3 then
-							shouldClear = true
-							break
-						end
-					end
-				end
-				
-				if shouldClear then
-					table.clear(v[3])
-					table.clear(v)
-					cache[i] = nil
-				end
-			end
 			vapeEvents[event]:Fire(data)
 		end))
 	end
@@ -1389,7 +1383,7 @@ run(function()
 			end
 
 			for _, v in entitylib.List do
-				v.LandTick = math.abs(v.RootPart.Velocity.Y) < 0.1 and v.LandTick or tick()
+				v.LandTick = math.abs(v.RootPart.Velocity.Y) < 0.1 and tick() or v.LandTick
 				if (tick() - v.LandTick) > 0.2 and v.Jumps ~= 0 then
 					v.Jumps = 0
 					v.Jumping = false
@@ -1398,7 +1392,10 @@ run(function()
 			task.wait(0.05)
 		end
 	end)
-	vape:Clean(function() airTimeThreadRunning = false end)
+	vape:Clean(function()
+		airTimeThreadRunning = false
+		task.cancel(airTimeThread)
+	end)
 
 	pcall(function()
 		bedwars.Shop = require(replicatedStorage.TS.games.bedwars.shop['bedwars-shop']).BedwarsShop
@@ -1425,10 +1422,8 @@ run(function()
 		table.clear(cache)
 		table.clear(sides)
 		table.clear(remotes)
-		if storeChanged then
-			storeChanged:disconnect()
-			storeChanged = nil
-		end
+		storeChanged:disconnect()
+		storeChanged = nil
 
 		if entitylib.Connections then
 			for _, conn in ipairs(entitylib.Connections) do
@@ -1448,17 +1443,21 @@ run(function()
 			table.clear(entitylib.EntityThreads)
 		end
 
-		if entitylib.PlayerConnections then
-			for plr, conns in pairs(entitylib.PlayerConnections) do
-				if conns then
-					for _, conn in ipairs(conns) do
+		if entitylib.List then
+			for _, ent in ipairs(entitylib.List) do
+				if ent.Connections then
+					for _, conn in ipairs(ent.Connections) do
 						if conn and type(conn) == "userdata" and conn.Connected then
 							conn:Disconnect()
 						end
 					end
+					table.clear(ent.Connections)
 				end
 			end
-			table.clear(entitylib.PlayerConnections)
+			table.clear(entitylib.List)
+		end
+		if entitylib.stop then
+			entitylib.stop()
 		end
 	end)
 end)
@@ -5404,22 +5403,25 @@ run(function()
                         end
                     end))
                     refreshAllHitboxes()
-                    HitBoxes:Clean(runService.Heartbeat:Connect(function()
-                        if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return end
-                        for ent, part in pairs(objects) do
-                            if isTargetBehindWall(ent) then
-                                part:Destroy()
-                                objects[ent] = nil
-                            end
-                        end
-                        local entityList = entitylib.List
-                        for i = 1, #entityList do
-                            local ent = entityList[i]
-                            if not objects[ent] then
-                                createHitbox(ent)
-                            end
-                        end
-                    end))
+					local hitboxThrottleCounter = 0
+					HitBoxes:Clean(runService.Heartbeat:Connect(function()
+						if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return end
+						hitboxThrottleCounter = hitboxThrottleCounter + 1
+						if hitboxThrottleCounter % 6 ~= 0 then return end 
+						for ent, part in pairs(objects) do
+							if isTargetBehindWall(ent) then
+								part:Destroy()
+								objects[ent] = nil
+							end
+						end
+						local entityList = entitylib.List
+						for i = 1, #entityList do
+							local ent = entityList[i]
+							if not objects[ent] then
+								createHitbox(ent)
+							end
+						end
+					end))
                 end
             else
                 if AutoToggle.Enabled and isSword() then
@@ -32648,10 +32650,13 @@ run(function()
 			end
 		end))
         
-        Lucia:Clean(RunService.Heartbeat:Connect(function()
-            if not LuciaSpyToggle.Enabled then return end
-            local toRemove = {}
-            for pinataPart, data in pairs(trackedPinatas) do
+		local luciaSpyCounter = 0
+		Lucia:Clean(RunService.Heartbeat:Connect(function()
+			if not LuciaSpyToggle.Enabled then return end
+			luciaSpyCounter = luciaSpyCounter + 1
+			if luciaSpyCounter % 6 ~= 0 then return end 
+			local toRemove = {}
+			for pinataPart, data in pairs(trackedPinatas) do
                 if pinataPart and pinataPart.Parent then
                     local currentCandy = getCandyAmount(pinataPart)
                 
@@ -32721,10 +32726,12 @@ run(function()
                         end
                     end))
 
-                    Lucia:Clean(RunService.Heartbeat:Connect(function()
-                        if not Lucia.Enabled or not LuciaESPToggle.Enabled then return end
-                        
-                        for pinataPart, ref in pairs(Reference) do
+					local luciaESPCounter = 0
+					Lucia:Clean(RunService.Heartbeat:Connect(function()
+						if not Lucia.Enabled or not LuciaESPToggle.Enabled then return end
+						luciaESPCounter = luciaESPCounter + 1
+						if luciaESPCounter % 6 ~= 0 then return end  
+						for pinataPart, ref in pairs(Reference) do
                             if pinataPart and pinataPart.Parent then
                                 updateCandyDisplay(pinataPart)
                             else
@@ -34404,9 +34411,10 @@ run(function()
 		Function = function(callback)
 			if callback then
 				task.spawn(function()
+					local objs = collection('HannahExecuteInteraction', AutoHannah)
+
 					while AutoHannah.Enabled do
 						task.wait(0.1)
-
 						if not entitylib.isAlive then continue end
 
 						local ent = not KATarget.Enabled and entitylib.EntityPosition({
@@ -34428,7 +34436,6 @@ run(function()
 							if not hasLineOfSight(root.Position, ent.RootPart.Position, ent) then continue end
 						end
 
-						local objs = collection('HannahExecuteInteraction', AutoHannah)
 						local localPosition = entitylib.character.RootPart.Position
 
 						for _, v in objs do
@@ -34606,13 +34613,16 @@ run(function()
         return nil
     end
 
-    local function destroySnowParticles()
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj.Name == "SnowParticlePart" or (obj:IsA("Part") and obj.Name:find("Snow")) then
-                obj:Destroy()
-            end
-        end
-    end
+	local function destroySnowParticles()
+		task.spawn(function()  
+			for _, obj in ipairs(workspace:GetDescendants()) do
+				if obj.Name == "SnowParticlePart" or (obj:IsA("Part") and obj.Name:find("Snow")) then
+					obj:Destroy()
+				end
+				task.wait()  
+			end
+		end)
+	end
 
     RemoveSnow = vape.Categories.BoostFPS:CreateModule({
         Name = 'RemoveSnow',
