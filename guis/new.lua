@@ -1,5 +1,4 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -6887,6 +6886,7 @@ local function refreshPremadeWindow()
 				})
 				task.wait(0.15)
 				premadeWindow.Visible = false
+				premadeBlocker.Visible = false
 				
 				mainapi:CreateNotification('Profile Created', 'Created new profile: '..newProfileName, 3, 'info')
 			else
