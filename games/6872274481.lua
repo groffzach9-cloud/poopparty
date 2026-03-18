@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -1134,36 +1135,19 @@ run(function()
 		end
 	end
 
-	bedwars.breakBlock = function(block, effects, anim, customHealthbar, instant, legit, sorting, angle)
-		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return end
-		sorting = sorting or 'Health'
-		angle = angle or 360
-
+	bedwars.breakBlock = function(block, effects, anim, customHealthbar, autotool, wallcheck, nobreak)
+		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive then return end
 		local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
 		local cost, pos, target, path = math.huge
-		local mag = 9e9	
+		local mag = 9e9
 
 		local positions = (handler and handler:getContainedPositions(block) or {block.Position / 3})
 
-		if not canDebug then
-			pos = positions[2] or positions[1]
-			target = positions[2]
-			path = {}
-			if positions[2] then
-				path[positions[2]] = positions[2] - Vector3.new(0, 3, 0)
-			end
-
-			path[positions[1]] = positions[1] - Vector3.new(0, 3, 0)
-		else
-			for _, v in positions do
-				local dpos, dcost, dpath = calculatePath(block, v * 3, breakfuncs[sorting] or breakfuncs.Health, angle)
-				local dmag = dpos and (entitylib.character.RootPart.Position - dpos).Magnitude
-				
-				if dpos then
-					if dcost < cost or (dcost == cost and dmag < mag) then
-						cost, pos, target, path, mag = dcost, dpos, v * 3, dpath, dmag
-					end
-				end
+		for _, v in positions do
+			local dpos, dcost, dpath = calculatePath(block, v * 3)
+			local dmag = dpos and (entitylib.character.RootPart.Position - dpos).Magnitude
+			if dpos and dcost < cost and dmag < mag then
+				cost, pos, target, path, mag = dcost, dpos, v * 3, dpath, dmag
 			end
 		end
 
@@ -1172,14 +1156,16 @@ run(function()
 			local dblock, dpos = getPlacedBlock(pos)
 			if not dblock then return end
 
-			if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
+			if not nobreak and (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.2 then
 				local breaktype = bedwars.ItemMeta[dblock.Name].block.breakType
 				local tool = store.tools[breaktype]
 				if tool then
-					if legit then
-						local hotbar = getHotbar(tool.tool)
-						if hotbar then
-							hotbarSwitch(hotbar)
+					if autotool then
+						for i, v in store.inventory.hotbar do
+							if v.item and v.item.tool == tool.tool and i ~= (store.inventory.hotbarSlot + 1) then 
+								hotbarSwitch(i - 1)
+								break
+							end
 						end
 					else
 						switchItem(tool.tool)
@@ -1192,41 +1178,46 @@ run(function()
 				blockhealthbar.breakingBlockPosition = dpos
 			end
 
-			bedwars.ClientDamageBlock:Get('DamageBlock'):CallServerAsync({
-				blockRef = {blockPosition = dpos},
-				hitPosition = pos,
-				hitNormal = Vector3.FromNormalId(Enum.NormalId.Top)
-			}):andThen(function(result)
-				if result then
-					if result == 'cancelled' then
-						store.damageBlockFail = tick() + 1
-						return
-					end
+			if not nobreak then
+				bedwars.ClientDamageBlock:Get('DamageBlock'):CallServerAsync({
+					blockRef = {blockPosition = dpos},
+					hitPosition = pos,
+					hitNormal = Vector3.FromNormalId(Enum.NormalId.Top)
+				}):andThen(function(result)
+					if result then
+						if result == 'cancelled' then
+							store.damageBlockFail = os.clock() + 1
+							table.clear(cache)
+							return
+						end
 
-					if effects then
-						local blockdmg = (blockhealthbar.blockHealth - (result == 'destroyed' and 0 or getBlockHealth(dblock, dpos)))
-						customHealthbar = customHealthbar or bedwars.BlockBreaker.updateHealthbar
-						customHealthbar(bedwars.BlockBreaker, {blockPosition = dpos}, blockhealthbar.blockHealth, dblock:GetAttribute('MaxHealth'), blockdmg, dblock)
-						blockhealthbar.blockHealth = math.max(blockhealthbar.blockHealth - blockdmg, 0)
+						if effects then
+							local blockdmg = (blockhealthbar.blockHealth - (result == 'destroyed' and 0 or getBlockHealth(dblock, dpos)))
+							customHealthbar = customHealthbar or bedwars.BlockBreaker.updateHealthbar
+							customHealthbar(bedwars.BlockBreaker, {blockPosition = dpos}, blockhealthbar.blockHealth, dblock:GetAttribute('MaxHealth'), blockdmg, dblock)
+							blockhealthbar.blockHealth = math.max(blockhealthbar.blockHealth - blockdmg, 0)
 
-						if blockhealthbar.blockHealth <= 0 then
-							bedwars.BlockBreaker.breakEffect:playBreak(dblock.Name, dpos, lplr)
-							bedwars.BlockBreaker.healthbarMaid:DoCleaning()
-							blockhealthbar.breakingBlockPosition = Vector3.zero
-						else
-							bedwars.BlockBreaker.breakEffect:playHit(dblock.Name, dpos, lplr)
+							pcall(function()
+								if blockhealthbar.blockHealth <= 0 then
+									bedwars.BlockBreaker.breakEffect:playBreak(dblock.Name, dpos, lplr)
+									bedwars.BlockBreaker.healthbarMaid:DoCleaning()
+									blockhealthbar.breakingBlockPosition = Vector3.zero
+								else
+									bedwars.BlockBreaker.breakEffect:playHit(dblock.Name, dpos, lplr)
+								end
+							end)
+						end
+
+						if anim then
+							local animation = bedwars.AnimationUtil:playAnimation(lplr, bedwars.BlockController:getAnimationController():getAssetId(1))
+							bedwars.ViewmodelController:playAnimation(15)
+							task.wait(0.3)
+							animation:Stop()
+							animation:Destroy()
 						end
 					end
-
-					if anim then
-						local animation = bedwars.AnimationUtil:playAnimation(lplr, bedwars.BlockController:getAnimationController():getAssetId(1))
-						bedwars.ViewmodelController:playAnimation(15)
-						task.wait(0.3)
-						animation:Stop()
-						animation:Destroy()
-					end
-				end
-			end)
+				end)
+			end
 
 			if effects then
 				return pos, path, target
@@ -10269,7 +10260,6 @@ run(function()
     local DrawingToggle
     local ShowKits
     local Rank
-    local Enchant
     local Scale
     local FontOption
     local Teammates
@@ -10282,8 +10272,6 @@ run(function()
     local lastUpdate = {}
     local kitCache = {}
     local equipmentCache = {}
-    local enchantCache = {}
-    local enchantConnections = {}
     local tick = tick
     local math_floor = math.floor
     local math_round = math.round
@@ -10413,44 +10401,6 @@ run(function()
         ['winter_lady'] = "rbxassetid://83274578564074",
     }
 
-    local enchantImageMap = nil
-    local function buildEnchantMap()
-        if enchantImageMap then return enchantImageMap end
-        enchantImageMap = {}
-        task.spawn(function()
-            if vape.ThreadFix then setthreadidentity(8) end
-            local ok, meta = pcall(function()
-                return require(game:GetService('ReplicatedStorage').TS.enchant['enchant-meta'])
-            end)
-            if not ok or not meta then return end
-            for _, subMeta in pairs({meta.EnchantMeta, meta.ToolEnchantMeta, meta.ArmorEnchantMeta}) do
-                if type(subMeta) == 'table' then
-                    for _, v in pairs(subMeta) do
-                        if type(v) == 'table' and v.statusEffect and v.image then
-                            enchantImageMap[v.statusEffect] = v.image
-                        end
-                    end
-                end
-            end
-        end)
-        return enchantImageMap
-    end
-
-    local function getActiveEnchantImage(char)
-        if not char then return '' end
-        local map = buildEnchantMap()
-        for attr, val in pairs(char:GetAttributes()) do
-            if attr:sub(1, 13) == 'StatusEffect_' and type(val) == 'number' and val < 0 then
-                local effectName = attr:sub(14)
-                if not effectName:find('stacks') then
-                    local img = map[effectName]
-                    if img and img ~= '' then return img end
-                end
-            end
-        end
-        return ''
-    end
-
     local Added = {
         Normal = function(ent)
             if not Targets.Players.Enabled and ent.Player then return end
@@ -10567,26 +10517,6 @@ run(function()
                 end)
             end
 
-            if Enchant.Enabled and ent.Player and ent.Character then
-                local Icon = Instance.new('ImageLabel')
-                Icon.Name = 'EnchantIcon'
-                Icon.Size = udim2fromOffset(30, 30)
-                Icon.Position = udim2fromOffset(-30, -4)
-                Icon.BackgroundTransparency = 1
-                Icon.Image = getActiveEnchantImage(ent.Character)
-                Icon.Parent = nametag
-                enchantCache[ent] = Icon.Image
-                enchantConnections[ent] = ent.Character.AttributeChanged:Connect(function(attr)
-                    if attr:sub(1, 13) == 'StatusEffect_' then
-                        local newImage = getActiveEnchantImage(ent.Character)
-                        if enchantCache[ent] ~= newImage then
-                            Icon.Image = newImage
-                            enchantCache[ent] = newImage
-                        end
-                    end
-                end)
-            end
-
             Reference[ent] = nametag
             lastUpdate[ent] = 0
         end,
@@ -10642,11 +10572,6 @@ run(function()
                 lastUpdate[ent] = nil
                 kitCache[ent] = nil
                 equipmentCache[ent] = nil
-                enchantCache[ent] = nil
-                if enchantConnections[ent] then
-                    enchantConnections[ent]:Disconnect()
-                    enchantConnections[ent] = nil
-                end
                 v:Destroy()
             end
         end,
@@ -10922,8 +10847,6 @@ run(function()
                 lastUpdate = {}
                 kitCache = {}
                 equipmentCache = {}
-                enchantCache = {}
-                enchantConnections = {}
             end
         end,
         Tooltip = 'Renders nametags on entities through walls.'
@@ -11031,18 +10954,6 @@ run(function()
     Rank = NameTags:CreateToggle({
         Name = 'Rank',
         Tooltip = 'Displays player\'s rank icon',
-        Function = function()
-            if NameTags.Enabled then
-                NameTags:Toggle()
-                NameTags:Toggle()
-            end
-        end
-    })
-
-    Enchant = NameTags:CreateToggle({
-        Name = 'Enchant',
-        Tooltip = 'Displays active weapon enchant icon',
-        Default = true,
         Function = function()
             if NameTags.Enabled then
                 NameTags:Toggle()
@@ -16912,26 +16823,54 @@ end
 	
 run(function()
 	local Breaker
-	local Mode
+	local Delay
 	local Range
-	local BreakSpeed
-	local Angle
 	local UpdateRate
-	local Custom
 	local Bed
-	local Hive
 	local Tesla
-	local LuckyBlock
+	local Hive
 	local IronOre
+	local Pinata
+	local LuckyBlock
 	local Effect
-	local CustomHealth = {Enabled = false}
+	local CustomHealth = {}
 	local Animation
 	local SelfBreak
-	local InstantBreak
+	local AutoTool
 	local LimitItem
-	local AutoTool = {Enabled = false}
-	local customlist, parts = {}, {}
-	
+	local BreakClosestBlock
+	local PathToBed
+	local MouseDown
+	local parts = {}
+	local lastPlayerPosition = nil
+	local currentTargetBlock = nil
+	local cachedTargetBlocks = {}
+	local lastCacheUpdate = 0
+	local CACHE_INTERVAL = 0.5
+
+	local tempSortTable = {}
+
+	local function getActiveTargetList()
+		local list = {}
+		if Tesla and Tesla.Enabled     then table.insert(list, 'tesla_trap') end
+		if Hive and Hive.Enabled       then table.insert(list, 'beehive') end
+		if IronOre and IronOre.Enabled then table.insert(list, 'iron_ore_mesh_block') end
+		if Pinata and Pinata.Enabled   then table.insert(list, 'pinata') end
+		return list
+	end
+
+	local function isSameTeam(userId)
+		if not userId then return false end
+		local localTeam = lplr.Team
+		if not localTeam then return false end
+		for _, player in playersService:GetPlayers() do
+			if player.UserId == userId and player.Team == localTeam then
+				return true
+			end
+		end
+		return false
+	end
+
 	local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
 		if block:GetAttribute('NoHealthbar') then return end
 		if not self.healthbarPart or not self.healthbarBlockRef or self.healthbarBlockRef.blockPosition ~= blockRef.blockPosition then
@@ -16949,7 +16888,7 @@ run(function()
 			part.Parent = workspace
 			self.healthbarPart = part
 			bedwars.QueryUtil:setQueryIgnored(self.healthbarPart, true)
-	
+
 			local mounted = bedwars.Roact.mount(create('BillboardGui', {
 				Size = UDim2.fromOffset(249, 102),
 				StudsOffset = Vector3.new(0, 2.5, 0),
@@ -16968,7 +16907,7 @@ run(function()
 						Size = UDim2.new(1, 89, 1, 52),
 						Position = UDim2.fromOffset(-48, -31),
 						BackgroundTransparency = 1,
-						Image = getcustomasset('catrewrite/assets/new/blur.png'),
+						Image = getcustomasset('newvape/assets/new/blur.png'),
 						ScaleType = Enum.ScaleType.Slice,
 						SliceCenter = Rect.new(52, 31, 261, 502)
 					}),
@@ -17008,7 +16947,7 @@ run(function()
 					})
 				})
 			}), part)
-	
+
 			self.healthbarMaid:GiveTask(function()
 				cleanCheck = false
 				self.healthbarBlockRef = nil
@@ -17018,120 +16957,265 @@ run(function()
 				end
 				self.healthbarPart = nil
 			end)
-	
+
 			bedwars.RuntimeLib.Promise.delay(5):andThen(function()
 				if cleanCheck then
 					self.healthbarMaid:DoCleaning()
 				end
 			end)
 		end
-	
+
 		local newpercent = math.clamp((health - changeHealth) / maxHealth, 0, 1)
 		tweenService:Create(self.healthbarProgressRef:getValue(), TweenInfo.new(0.3), {
-			Size = UDim2.fromScale(newpercent, 1), BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
+			Size = UDim2.fromScale(newpercent, 1),
+			BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
 		}):Play()
 	end
-	
+
 	local hit = 0
-	
-	local function attemptBreak(tab, localPosition)
-		if not tab then return end
-		if #tab > 1 then
-			pcall(function()
-				table.sort(tab, function(a, b)
-					return (localPosition - a.Position).Magnitude <= (localPosition - b.Position).Magnitude
-				end)
-			end)
+
+	local function passesChecks(v)
+		local placedBy = v:GetAttribute('PlacedByUserId')
+		if not SelfBreak.Enabled then
+			if placedBy == lplr.UserId then return false end
+			if isSameTeam(placedBy) then return false end
+		else
+			if placedBy == lplr.UserId and (v.Name == 'bed' or v.Name == 'team_chest') then return false end
 		end
-		for _, v in tab do
-			if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
-				if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
-				if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
-				if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
-	
-				hit += 1
-				local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, InstantBreak.Enabled, AutoTool.Enabled, Mode.Value, Angle.Value)
-				if path then
-					local currentnode = target
-					for _, part in parts do
-						part.Position = currentnode or Vector3.zero
-						if currentnode then
-							part.BoxHandleAdornment.Color3 = currentnode == endpos and Color3.new(1, 0.2, 0.2) or currentnode == target and Color3.new(0.2, 0.2, 1) or Color3.new(0.2, 1, 0.2)
-						end
-						currentnode = path[currentnode]
-					end
+		if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then return false end
+		if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then return false end
+		return true
+	end
+
+	local function doBreak(block)
+		hit += 1
+		local target, path, endpos = bedwars.breakBlock(block, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled)
+		if path then
+			local currentnode = target
+			for _, part in parts do
+				part.Position = currentnode or Vector3.zero
+				if currentnode then
+					part.BoxHandleAdornment.Color3 = currentnode == endpos and Color3.new(1, 0.2, 0.2) or currentnode == target and Color3.new(0.2, 0.2, 1) or Color3.new(0.2, 1, 0.2)
 				end
-	
-				task.wait(InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value)
-	
-				return true
+				currentnode = path[currentnode]
 			end
 		end
-	
+		task.wait(Delay.Value)
+		return true
+	end
+
+	local function findPathBlock(targetPos, playerPos)
+		local dir = (targetPos - playerPos)
+		local distance = dir.Magnitude
+		if distance < 3 then return nil end
+		dir = dir.Unit
+		local checked = {}
+		local step = 3
+		for i = step, distance - step, step do
+			local checkPos = roundPos(playerPos + dir * i)
+			local key = checkPos.X .. ',' .. checkPos.Y .. ',' .. checkPos.Z
+			if checked[key] then continue end
+			checked[key] = true
+			if (checkPos - targetPos).Magnitude < 4 then continue end
+			local block = getPlacedBlock(checkPos)
+			if block and bedwars.BlockController:isBlockBreakable({blockPosition = checkPos / 3}, lplr) then
+				return block
+			end
+		end
+		return nil
+	end
+
+	local function updateTargetBlockCache(localPosition, activeList)
+		local currentTime = tick()
+		if currentTime - lastCacheUpdate < CACHE_INTERVAL then return end
+		lastCacheUpdate = currentTime
+		table.clear(cachedTargetBlocks)
+		if #activeList == 0 then return end
+		local rangeSq = Range.Value ^ 2
+		for _, obj in store.blocks do
+			if obj and obj:IsA('BasePart') and table.find(activeList, obj.Name) then
+				local distSq = (obj.Position - localPosition).Magnitude
+				if distSq <= rangeSq then
+					table.insert(cachedTargetBlocks, obj)
+				end
+			end
+		end
+	end
+
+	local function attemptBreakTargets(localPosition)
+		local activeList = getActiveTargetList()
+		if #activeList == 0 then return false end
+		if MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
+
+		updateTargetBlockCache(localPosition, activeList)
+		if #cachedTargetBlocks == 0 then return false end
+
+		table.clear(tempSortTable)
+		for _, v in cachedTargetBlocks do
+			table.insert(tempSortTable, v)
+		end
+
+		table.sort(tempSortTable, function(a, b)
+			return (a.Position - localPosition).Magnitude < (b.Position - localPosition).Magnitude
+		end)
+
+		for _, v in tempSortTable do
+			if v.Name == 'iron_ore_mesh_block' then
+				return doBreak(v)
+			end
+			if not bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then continue end
+			if not passesChecks(v) then continue end
+			return doBreak(v)
+		end
+
 		return false
 	end
-	
+
+	local function attemptBreakBed(tab, localPosition)
+		if not tab then return false end
+		if MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
+
+		local closestBed = nil
+		local closestDist = math.huge
+		for _, bedModel in ipairs(tab) do
+			local dist = (bedModel.Position - localPosition).Magnitude
+			if dist <= Range.Value and dist < closestDist then
+				closestDist = dist
+				closestBed = bedModel
+			end
+		end
+
+		if not closestBed then return false end
+		local blocker = findPathBlock(closestBed.Position, localPosition)
+
+		if blocker then
+			if not passesChecks(blocker) then return false end
+			return doBreak(blocker)
+		else
+			if PathToBed.Enabled then
+				return false
+			end
+			local block = getPlacedBlock(closestBed.Position)
+			if not block then return false end
+			if not bedwars.BlockController:isBlockBreakable({blockPosition = block.Position / 3}, lplr) then return false end
+			if not passesChecks(block) then return false end
+			return doBreak(block)
+		end
+	end
+
+	local function attemptBreak(tab, localPosition, isBed)
+		if not tab then return false end
+		if MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+			return false
+		end
+
+		if isBed then
+			local closestBedBlock, closestDist = nil, math.huge
+			for _, bedModel in ipairs(tab) do
+				local distSq = (bedModel.Position - localPosition).Magnitude
+				if distSq <= Range.Value ^ 2 then
+					local block = getPlacedBlock(bedModel.Position)
+					if block and bedwars.BlockController:isBlockBreakable({blockPosition = block.Position / 3}, lplr) then
+						if passesChecks(block) then
+							local dist = math.sqrt(distSq)
+							if dist < closestDist then
+								closestDist = dist
+								closestBedBlock = block
+							end
+						end
+					end
+				end
+			end
+			if closestBedBlock then
+				return doBreak(closestBedBlock)
+			end
+		end
+
+		table.clear(tempSortTable)
+		local rangeSq = Range.Value ^ 2
+
+		for _, v in tab do
+			local distSq = (v.Position - localPosition).Magnitude
+			if distSq <= rangeSq then
+				table.insert(tempSortTable, v)
+			end
+		end
+
+		if #tempSortTable == 0 then return false end
+
+		table.sort(tempSortTable, function(a, b)
+			return (a.Position - localPosition).Magnitude < (b.Position - localPosition).Magnitude
+		end)
+
+		for _, v in tempSortTable do
+			if bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
+				if not passesChecks(v) then continue end
+				if SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then
+					if v:GetAttribute('NoBreak') or v.Name == 'bed' or v.Name == 'team_chest' then
+						continue
+					end
+				end
+
+				if isBed and (BreakClosestBlock.Enabled or PathToBed.Enabled) then
+					hit += 1
+					local hasPath, blockingPos = hasDirectPathToBed(v.Position, localPosition)
+					if hasPath then
+						if BreakClosestBlock.Enabled and not PathToBed.Enabled then
+							return doBreak(v)
+						elseif PathToBed.Enabled then
+							return false
+						end
+					else
+						local block = getPlacedBlock(blockingPos)
+						if block and bedwars.BlockController:isBlockBreakable({blockPosition = blockingPos / 3}, lplr) and passesChecks(block) then
+							return doBreak(block)
+						end
+					end
+				else
+					return doBreak(v)
+				end
+			end
+		end
+
+		return false
+	end
+
 	Breaker = vape.Categories.Minigames:CreateModule({
 		Name = 'Breaker',
-		Tags = getModTags(nil, isNewUser('Breaker')),
-		Alias = {'nuker', 'bedbreaker', 'bednuker'},
 		Function = function(callback)
 			if callback then
-				for _ = 1, 30 do
-					local part = Instance.new('Part')
-					part.Anchored = true
-					part.CanQuery = false
-					part.CanCollide = false
-					part.Transparency = 1
-					part.Parent = gameCamera
-					local highlight = Instance.new('BoxHandleAdornment')
-					highlight.Size = Vector3.one
-					highlight.AlwaysOnTop = true
-					highlight.ZIndex = 1
-					highlight.Transparency = 0.5
-					highlight.Adornee = part
-					highlight.Parent = part
-					table.insert(parts, part)
-				end
-	
-				local beds = collection('bed', Breaker)
-				local teslas = collection('tesla-trap', Breaker, function(tab, obj)
-					task.delay(0.1, function()
-						local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
-						if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
-							table.insert(tab, obj)
-						end
-					end)
-				end)
-				local hives = collection('beehive', Breaker, function(tab, obj)
-					task.delay(0.1, function()
-						local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
-						if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
-							table.insert(tab, obj)
-						end
-					end)
-				end)
-				local luckyblock = collection('LuckyBlock', Breaker)
-				local ironores = collection('iron_ore_mesh_block', Breaker)
-				customlist = collection('block', Breaker, function(tab, obj)
-					if table.find(Custom.ListEnabled, obj.Name) then
-						table.insert(tab, obj)
+				if #parts == 0 then
+					for _ = 1, 30 do
+						local part = Instance.new('Part')
+						part.Anchored = true
+						part.CanQuery = false
+						part.CanCollide = false
+						part.Transparency = 1
+						part.Parent = gameCamera
+						local highlight = Instance.new('BoxHandleAdornment')
+						highlight.Size = Vector3.one
+						highlight.AlwaysOnTop = true
+						highlight.ZIndex = 1
+						highlight.Transparency = 0.5
+						highlight.Adornee = part
+						highlight.Parent = part
+						table.insert(parts, part)
 					end
-				end)
-	
+				end
+
+				local beds        = collection('bed', Breaker)
+				local luckyblocks = collection('LuckyBlock', Breaker)
+
 				repeat
 					task.wait(1 / UpdateRate.Value)
 					if not Breaker.Enabled then break end
+
 					if entitylib.isAlive then
 						local localPosition = entitylib.character.RootPart.Position
-	
-						if attemptBreak(Tesla.Enabled and teslas, localPosition) then continue end
-						if attemptBreak(Bed.Enabled and beds, localPosition) then continue end
-						if attemptBreak(Hive.Enabled and hives, localPosition) then continue end
-						if attemptBreak(customlist, localPosition) then continue end
-						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition) then continue end
-						if attemptBreak(IronOre.Enabled and ironores, localPosition) then continue end
-	
+						if Bed.Enabled and attemptBreakBed(beds, localPosition) then continue end
+						if attemptBreakTargets(localPosition) then continue end
+						if attemptBreak(LuckyBlock.Enabled and luckyblocks, localPosition, false) then continue end
+
 						for _, v in parts do
 							v.Position = Vector3.zero
 						end
@@ -17139,20 +17223,18 @@ run(function()
 				until not Breaker.Enabled
 			else
 				for _, v in parts do
-					v:ClearAllChildren()
-					v:Destroy()
+					v.Parent = nil
 				end
 				table.clear(parts)
+				table.clear(cachedTargetBlocks)
+				lastCacheUpdate = 0
+				lastPlayerPosition = nil
+				currentTargetBlock = nil
 			end
 		end,
 		Tooltip = 'Break blocks around you automatically'
 	})
-	Mode = Breaker:CreateDropdown({
-		Name = 'Break Sorting',
-		List = {'Distance', 'Health'},
-		Tooltip = 'Distance - Targets nearest blocks\nHealth = Targets the best block',
-		Default = 'Health'
-	})
+
 	Range = Breaker:CreateSlider({
 		Name = 'Break range',
 		Min = 1,
@@ -17162,19 +17244,13 @@ run(function()
 			return val == 1 and 'stud' or 'studs'
 		end
 	})
-	BreakSpeed = Breaker:CreateSlider({
-		Name = 'Break speed',
+	Delay = Breaker:CreateSlider({
+		Name = 'Break Delay',
 		Min = 0,
 		Max = 0.3,
 		Default = 0.25,
 		Decimal = 100,
 		Suffix = 'seconds'
-	})
-	Angle = Breaker:CreateSlider({
-		Name = 'Max angle',
-		Min = 1,
-		Max = 360,
-		Default = 360,	
 	})
 	UpdateRate = Breaker:CreateSlider({
 		Name = 'Update rate',
@@ -17183,36 +17259,32 @@ run(function()
 		Default = 60,
 		Suffix = 'hz'
 	})
-	Custom = Breaker:CreateTextList({
-		Name = 'Custom',
-		Function = function()
-			if not customlist then return end
-			table.clear(customlist)
-			for _, obj in store.blocks do
-				if table.find(Custom.ListEnabled, obj.Name) then
-					table.insert(customlist, obj)
-				end
-			end
-		end
-	})
 	Bed = Breaker:CreateToggle({
 		Name = 'Break Bed',
 		Default = true
 	})
 	Tesla = Breaker:CreateToggle({
 		Name = 'Break Tesla',
-		Default = true
+		Default = true,
+		Function = function() lastCacheUpdate = 0 end
 	})
 	Hive = Breaker:CreateToggle({
 		Name = 'Break Hive',
-		Default = true
-	})
-	LuckyBlock = Breaker:CreateToggle({
-		Name = 'Break Lucky Block',
-		Default = true
+		Default = true,
+		Function = function() lastCacheUpdate = 0 end
 	})
 	IronOre = Breaker:CreateToggle({
 		Name = 'Break Iron Ore',
+		Default = false,
+		Function = function() lastCacheUpdate = 0 end
+	})
+	Pinata = Breaker:CreateToggle({
+		Name = 'Break Pinata',
+		Default = false,
+		Function = function() lastCacheUpdate = 0 end
+	})
+	LuckyBlock = Breaker:CreateToggle({
+		Name = 'Break Lucky Block',
 		Default = true
 	})
 	Effect = Breaker:CreateToggle({
@@ -17230,16 +17302,48 @@ run(function()
 		Darker = true
 	})
 	Animation = Breaker:CreateToggle({Name = 'Animation'})
-	SelfBreak = Breaker:CreateToggle({Name = 'Self Break'})
-	InstantBreak = Breaker:CreateToggle({Name = 'Instant Break'})
+	SelfBreak = Breaker:CreateToggle({
+		Name = 'Self Break',
+		Tooltip = "When OFF: never breaks your own or any teammate's blocks. When ON: can break your own placed blocks (still skips beds/chests)."
+	})
 	AutoTool = Breaker:CreateToggle({
 		Name = 'Auto Tool',
-		Tooltip = 'Visualises tool switching'
+		Tooltip = 'Automatically switches to the best tool for breaking blocks'
 	})
 	LimitItem = Breaker:CreateToggle({
 		Name = 'Limit to items',
 		Tooltip = 'Only breaks when tools are held'
 	})
+	BreakClosestBlock = Breaker:CreateToggle({
+		Name = 'Break Closest Block',
+		Tooltip = 'Breaks blocks blocking the path to the bed. When path is clear, breaks the bed itself.',
+		Default = false,
+		Function = function(callback)
+			if callback and PathToBed.Enabled then
+				PathToBed:Toggle()
+			end
+		end
+	})
+	PathToBed = Breaker:CreateToggle({
+		Name = 'Path to Bed Only',
+		Tooltip = 'Breaks blocks blocking path to bed, but does NOT break the bed itself.',
+		Default = false,
+		Function = function(callback)
+			if callback and BreakClosestBlock.Enabled then
+				BreakClosestBlock:Toggle()
+			end
+		end
+	})
+	MouseDown = Breaker:CreateToggle({
+		Name = 'Require Mouse Down',
+		Tooltip = 'Only breaks blocks when holding left click'
+	})
+
+	task.defer(function()
+		if CustomHealth and CustomHealth.Object then
+			CustomHealth.Object.Visible = Effect.Enabled
+		end
+	end)
 end)
 	
 run(function()
@@ -32061,12 +32165,11 @@ PriorityDropdown = AutoDrone:CreateDropdown({
     })
 end)
 
--- w max??? :joy:
 run(function()
 	local KnitInit, Knit
 	repeat
 		KnitInit, Knit = pcall(function()
-			return debug.getupvalue(require(lplr.PlayerScripts.TS.knit).setup, 9)
+			return debug.getupvalue(require(playersService.LocalPlayer.PlayerScripts.TS.knit).setup, 9)
 		end)
 		if KnitInit then break end
 		task.wait()
@@ -32076,7 +32179,7 @@ run(function()
 		repeat task.wait() until debug.getupvalue(Knit.Start, 1)
 	end
 
-	local Players = game:GetService("Players")
+	local Players = playersService
 
 	shared.PERMISSION_CONTROLLER_HASANYPERMISSIONS_REVERT = shared.PERMISSION_CONTROLLER_HASANYPERMISSIONS_REVERT or Knit.Controllers.PermissionController.hasAnyPermissions
 	shared.MATCH_CONTROLLER_GETPLAYERPARTY_REVERT = shared.MATCH_CONTROLLER_GETPLAYERPARTY_REVERT or Knit.Controllers.MatchController.getPlayerParty
@@ -32199,7 +32302,7 @@ run(function()
 			for _, memberId in pairs(members) do
 				local memberIdStr = tostring(memberId)
 				if memberIdStr == playerIdInTeams then
-					--print("Warning: Player " .. playerIdInTeams .. " has themselves in their team list.")
+					print("Warning: Player " .. playerIdInTeams .. " has themselves in their team list.")
 				else
 					table.insert(cleanedMembers, memberIdStr)
 				end
@@ -32275,7 +32378,7 @@ run(function()
 				if v == Players.LocalPlayer then continue end
 				if tostring(v:GetAttribute("Disguised")) == "true" then
 					v:SetAttribute("Disguised", false)
-					InfoNotification("Remove Disguises", "Disabled streamer mode for "..tostring(v.Name).."!", 3)
+					notif("Remove Disguises", "Disabled streamer mode for "..tostring(v.Name).."!", 3)
 					table.insert(self.disguises, v)
 				end
 			end
@@ -32283,7 +32386,7 @@ run(function()
 			for i,v in pairs(self.disguises) do
 				if tostring(v:GetAttribute("Disguised")) ~= "true" then
 					v:SetAttribute("Disguised", true)
-					InfoNotification("Remove Disguises", "Re - enabled Streamer mode for "..tostring(v.Name).."!", 2)
+					notif("Remove Disguises", "Re - enabled Streamer mode for "..tostring(v.Name).."!", 2)
 				end
 			end
 			table.clear(self.disguises)
@@ -32354,11 +32457,9 @@ run(function()
 
 		self:toggleDisableDisguises()
 	end
-
 	shared.ACMODVIEWENABLED = false
 	AC_MOD_View.moduleInstance = vape.Categories.World:CreateModule({
 		Name = "AC MOD View",
-		Tags = {'new', 'op'},
 		Function = function(call)
 			shared.ACMODVIEWENABLED = call
 			if call then
@@ -34865,550 +34966,6 @@ run(function()
 end)
 
 run(function()
-    local RemoveSnow
-    local controller
-    local originalOnEnable
-    local originalKnitStart
-
-    local function findController()
-        if bedwars and bedwars.SnowWeatherParticleController then
-            return bedwars.SnowWeatherParticleController
-        end
-        if bedwars and bedwars.Knit and bedwars.Knit.Controllers then
-            return bedwars.Knit.Controllers.SnowWeatherParticleController
-        end
-        return nil
-    end
-
-	local function destroySnowParticles()
-			task.spawn(function()
-				local count = 0
-				for _, obj in ipairs(workspace:GetDescendants()) do
-					if obj.Name == "SnowParticlePart" or (obj:IsA("Part") and obj.Name:find("Snow")) then
-						obj:Destroy()
-					end
-					count += 1
-					if count % 50 == 0 then
-						task.wait()
-					end
-				end
-			end)
-		end
-
-    RemoveSnow = vape.Categories.BoostFPS:CreateModule({
-        Name = 'RemoveSnow',
-        Function = function(callback)
-            if callback then
-                repeat
-                    task.wait()
-                    controller = findController()
-                until controller or not RemoveSnow.Enabled
-
-                if controller and RemoveSnow.Enabled then
-                    originalOnEnable = controller.onEnable
-                    originalKnitStart = controller.KnitStart
-                    controller.onEnable = function() end
-                    controller.KnitStart = function() end
-                    destroySnowParticles()
-                end
-            else
-                if controller then
-                    if originalOnEnable then
-                        controller.onEnable = originalOnEnable
-                    end
-                    if originalKnitStart then
-                        controller.KnitStart = originalKnitStart
-                    end
-                end
-            end
-        end,
-        Tooltip = 'Disables snow weather particles for better FPS (in testing rn not 100% sure)'
-    })
-
-    vape:Clean(function()
-        if controller and originalOnEnable and originalKnitStart then
-            controller.onEnable = originalOnEnable
-            controller.KnitStart = originalKnitStart
-        end
-    end)
-end)
-
-run(function()
-    local FishermanSpy
-    local IgnoreTeammatesToggle
-
-    local Players    = game:GetService('Players')
-    local lplr       = Players.LocalPlayer
-
-    local vape       = shared.vape
-    local bedwars    = (function() 
-        return shared.bedwars or getgenv().bedwars
-    end)()
-    local remotes    = getgenv().remotes or {}
-
-    local fishNames = {
-        fish_iron    = "Iron Fish",
-        fish_diamond = "Diamond Fish",
-        fish_gold    = "Gold Fish",
-        fish_special = "Special Fish",
-        fish_emerald = "Emerald Fish",
-    }
-
-    local notifQueue = {}
-
-    local function safeNotif(title, message, duration)
-        table.insert(notifQueue, { title = title, message = message, duration = duration or 5 })
-    end
-
-    local function setupFishermanSpy()
-        if not bedwars or not bedwars.Client then
-            warn("[FishermanSpy] bedwars.Client not found")
-            return
-        end
-
-        bedwars.Client:WaitFor(remotes.FishCaught):andThen(function(rbx)
-            FishermanSpy:Clean(rbx:Connect(function(tbl)
-                local char = tbl.catchingPlayer and tbl.catchingPlayer.Character
-                if not char then return end
-
-                local fish    = tbl.dropData and tbl.dropData.fishModel
-                local plrName = char.Name
-                local str     = plrName:sub(1,1):upper() .. plrName:sub(2)
-                local strfish = fishNames[tostring(fish)] or "Unknown Fish"
-
-                if IgnoreTeammatesToggle.Enabled then
-                    local currentPlr = Players:GetPlayerFromCharacter(char)
-                    if currentPlr and currentPlr.Team == lplr.Team then return end
-                end
-
-                safeNotif("Fisherman Spy", str .. " caught a " .. strfish, 8)
-            end))
-        end)
-    end
-
-    FishermanSpy = vape.Categories.Kits:CreateModule({
-        Name    = "FishermanSpy",
-        Tooltip = "Get notified when other players catch fish",
-        Function = function(callback)
-            if callback then
-                setupFishermanSpy()
-
-                local heartbeatConn = game:GetService('RunService').Heartbeat:Connect(function()
-                    if #notifQueue == 0 then return end
-                    local entry = table.remove(notifQueue, 1)
-                    pcall(vape.CreateNotification, vape, entry.title, entry.message, entry.duration)
-                end)
-                FishermanSpy:Clean(heartbeatConn)
-            else
-                notifQueue = {}
-            end
-        end
-    })
-
-    IgnoreTeammatesToggle = FishermanSpy:CreateToggle({
-        Name    = "Ignore Teammates",
-        Default = true,
-        Tooltip = "Don't notify for teammates catching fish"
-    })
-end)
-
-run(function()
-    local BeehiveSpy
-    local BackgroundToggle
-    local ColorSlider
-
-    local cloneref = cloneref or function(obj) return obj end
-    local collectionService = cloneref(game:GetService('CollectionService'))
-    local runService        = cloneref(game:GetService('RunService'))
-    local playersService    = cloneref(game:GetService('Players'))
-    local lplr              = playersService.LocalPlayer
-
-    local vape      = shared.vape
-    local getcustomasset = vape.Libraries.getcustomasset
-
-    local BeehiveFolder = Instance.new('Folder')
-    BeehiveFolder.Parent = vape.gui
-    local BeehiveReference = {}
-
-    local function addBlur(parent)
-        local blur = Instance.new('ImageLabel')
-        blur.Name = 'Blur'
-        blur.Size = UDim2.new(1, 89, 1, 52)
-        blur.Position = UDim2.fromOffset(-48, -31)
-        blur.BackgroundTransparency = 1
-        blur.Image = getcustomasset('newvape/assets/new/blur.png')
-        blur.ScaleType = Enum.ScaleType.Slice
-        blur.SliceCenter = Rect.new(52, 31, 261, 502)
-        blur.Parent = parent
-        return blur
-    end
-
-    local function isMyBeehive(beehive)
-        if not beehive then return false end
-        local placedBy = beehive:GetAttribute("PlacedByUserId")
-        return placedBy and placedBy == lplr.UserId
-    end
-
-    local function getBeehiveOwnerName(beehive)
-        if not beehive then return "Unknown" end
-        local placedBy = beehive:GetAttribute("PlacedByUserId")
-        if not placedBy then return "Unknown" end
-        local player = playersService:GetPlayerByUserId(placedBy)
-        if player then return player.Name end
-        return "Player"
-    end
-
-    local function AddedBeehive(beehive)
-        if isMyBeehive(beehive) then return end
-        if BeehiveReference[beehive] then return end
-
-        local level     = beehive:GetAttribute("Level") or 0
-        local ownerName = getBeehiveOwnerName(beehive)
-
-        local billboard = Instance.new('BillboardGui')
-        billboard.Parent = BeehiveFolder
-        billboard.Name   = 'beehive-spy'
-        billboard.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
-        billboard.Size   = UDim2.fromOffset(120, 40)
-        billboard.AlwaysOnTop = true
-        billboard.ClipsDescendants = false
-        billboard.Adornee = beehive
-
-        local blur = addBlur(billboard)
-        blur.Visible = BackgroundToggle and BackgroundToggle.Enabled or true
-
-        local hue, sat, val, opacity = 0, 0, 1, 0.5
-        if ColorSlider then
-            hue, sat, val, opacity = ColorSlider.Hue, ColorSlider.Sat, ColorSlider.Value, ColorSlider.Opacity
-        end
-
-        local frame = Instance.new('Frame')
-        frame.Size = UDim2.fromScale(1, 1)
-        frame.BackgroundColor3 = Color3.fromHSV(hue, sat, val)
-        frame.BackgroundTransparency = 1 - ((BackgroundToggle and BackgroundToggle.Enabled or true) and opacity or 0)
-        frame.BorderSizePixel = 0
-        frame.Parent = billboard
-        local uicorner = Instance.new('UICorner')
-        uicorner.CornerRadius = UDim.new(0, 6)
-        uicorner.Parent = frame
-        local nameLabel = Instance.new('TextLabel')
-        nameLabel.Name = 'OwnerName'
-        nameLabel.Size = UDim2.new(1, 0, 0.4, 0)
-        nameLabel.Position = UDim2.new(0, 0, 0, -20)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = ownerName
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextSize = 12
-        nameLabel.Font = Enum.Font.GothamBold
-        nameLabel.TextStrokeTransparency = 0.5
-        nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        nameLabel.Parent = billboard
-        local homeLabel = Instance.new('TextLabel')
-        homeLabel.Size = UDim2.fromOffset(20, 20)
-        homeLabel.Position = UDim2.new(0, 5, 0.5, 0)
-        homeLabel.AnchorPoint = Vector2.new(0, 0.5)
-        homeLabel.BackgroundTransparency = 1
-        homeLabel.Text = "🏘️"
-        homeLabel.TextSize = 16
-        homeLabel.Parent = frame
-        local levelLabel = Instance.new('TextLabel')
-        levelLabel.Name = 'Level'
-        levelLabel.Size = UDim2.new(0, 25, 1, 0)
-        levelLabel.Position = UDim2.new(1, -30, 0, 0)
-        levelLabel.BackgroundTransparency = 1
-        levelLabel.Text = tostring(level)
-        levelLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        levelLabel.TextSize = 16
-        levelLabel.Font = Enum.Font.GothamBold
-        levelLabel.TextStrokeTransparency = 0.5
-        levelLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        levelLabel.Parent = frame
-
-        BeehiveReference[beehive] = {
-            billboard  = billboard,
-            levelLabel = levelLabel,
-            frame      = frame,
-        }
-
-        BeehiveSpy:Clean(beehive:GetAttributeChangedSignal("Level"):Connect(function()
-            local ref = BeehiveReference[beehive]
-            if ref and ref.levelLabel then
-                ref.levelLabel.Text = tostring(beehive:GetAttribute("Level") or 0)
-            end
-        end))
-    end
-
-    local function RemovedBeehive(beehive)
-        if BeehiveReference[beehive] then
-            BeehiveReference[beehive].billboard:Destroy()
-            BeehiveReference[beehive] = nil
-        end
-    end
-
-    local function setupBeehiveSpy()
-        for _, beehive in collectionService:GetTagged('beehive') do
-            AddedBeehive(beehive)
-        end
-
-        BeehiveSpy:Clean(collectionService:GetInstanceAddedSignal('beehive'):Connect(function(beehive)
-            task.wait(0.1)
-            AddedBeehive(beehive)
-        end))
-
-        BeehiveSpy:Clean(collectionService:GetInstanceRemovedSignal('beehive'):Connect(function(beehive)
-            RemovedBeehive(beehive)
-        end))
-    end
-
-    BeehiveSpy = vape.Categories.Kits:CreateModule({
-        Name    = "BeehiveSpy",
-        Tooltip = "Shows enemy/other players' beehives with owner name and level (ignores your own)",
-        Function = function(callback)
-            if callback then
-                setupBeehiveSpy()
-            else
-                BeehiveFolder:ClearAllChildren()
-                table.clear(BeehiveReference)
-            end
-        end
-    })
-
-    BackgroundToggle = BeehiveSpy:CreateToggle({
-        Name    = "Background",
-        Default = true,
-        Function = function(callback)
-            if ColorSlider and ColorSlider.Object then ColorSlider.Object.Visible = callback end
-            for _, ref in BeehiveReference do
-                if ref and ref.billboard then
-                    local frame = ref.billboard:FindFirstChild("Frame")
-                    local blur  = ref.billboard:FindFirstChild("Blur")
-                    if frame then
-                        local opacity = ColorSlider and ColorSlider.Opacity or 0.5
-                        frame.BackgroundTransparency = 1 - (callback and opacity or 0)
-                    end
-                    if blur then blur.Visible = callback end
-                end
-            end
-        end
-    })
-
-    ColorSlider = BeehiveSpy:CreateColorSlider({
-        Name         = "Color",
-        DefaultValue = 0,
-        DefaultOpacity = 0.5,
-        Function = function(hue, sat, val, opacity)
-            for _, ref in BeehiveReference do
-                if ref and ref.frame then
-                    ref.frame.BackgroundColor3 = Color3.fromHSV(hue, sat, val)
-                    ref.frame.BackgroundTransparency = 1 - (BackgroundToggle.Enabled and opacity or 0)
-                end
-            end
-        end,
-        Darker = true
-    })
-
-    task.defer(function()
-        if ColorSlider and ColorSlider.Object then
-            ColorSlider.Object.Visible = BackgroundToggle and BackgroundToggle.Enabled or true
-        end
-    end)
-end)
-
-run(function()
-    local LuciaSpy
-    local IgnoreTeammatesSpy
-    local DisplayNameToggle
-
-    local runService     = game:GetService('RunService')
-    local playersService = game:GetService('Players')
-    local lplr           = playersService.LocalPlayer
-
-    local vape    = shared.vape
-    local bedwars = shared.bedwars or getgenv().bedwars
-
-    local trackedPinatas = {}
-
-    local function getPlayerName(player)
-        if DisplayNameToggle and DisplayNameToggle.Enabled then
-            return player.DisplayName ~= "" and player.DisplayName or player.Name
-        end
-        return player.Name
-    end
-
-    local function getTeamName(player)
-        if player.Team then return player.Team.Name end
-        return "Unknown"
-    end
-
-    local function getCandyAmount(pinataPart)
-        return pinataPart:GetAttribute("Coin") or 0
-    end
-
-    local function isTeammateSpy(pinataPart)
-        if not IgnoreTeammatesSpy or not IgnoreTeammatesSpy.Enabled then return false end
-        local placerId = pinataPart:GetAttribute("PlacedByUserId") or pinataPart:GetAttribute("PlacerId")
-        if not placerId then
-            local parent = pinataPart.Parent
-            if parent then
-                placerId = parent:GetAttribute("PlacedByUserId") or parent:GetAttribute("PlacerId")
-            end
-        end
-        if placerId then
-            if placerId == lplr.UserId then return true end
-            local placer = playersService:GetPlayerByUserId(placerId)
-            if placer and placer.Team == lplr.Team then return true end
-        end
-        return false
-    end
-
-    local function setupLuciaSpy()
-        local util = require(game:GetService("ReplicatedStorage").TS.games.bedwars.kit.kits['piggy-bank']['piggy-bank-util']).PiggyBankUtil
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Name == "pinata" then
-                if not isTeammateSpy(obj) then
-                    local placerId = obj:GetAttribute("PlacedByUserId") or obj:GetAttribute("PlacerId")
-                    if placerId then
-                        local placer = playersService:GetPlayerByUserId(placerId)
-                        local initialCandy = getCandyAmount(obj)
-                        trackedPinatas[obj] = {
-                            player      = placer,
-                            lastCandy   = initialCandy,
-                            exists      = true,
-                            placedTime  = tick()
-                        }
-                    end
-                end
-            end
-        end
-
-        LuciaSpy:Clean(workspace.DescendantAdded:Connect(function(obj)
-            if not LuciaSpy.Enabled then return end
-            if obj:IsA("BasePart") and obj.Name == "pinata" then
-                task.wait(0.2)
-                if not isTeammateSpy(obj) then
-                    local placerId = obj:GetAttribute("PlacedByUserId") or obj:GetAttribute("PlacerId")
-                    if placerId then
-                        local placer = playersService:GetPlayerByUserId(placerId)
-                        trackedPinatas[obj] = {
-                            player      = placer,
-                            lastCandy   = getCandyAmount(obj),
-                            exists      = true,
-                            placedTime  = tick()
-                        }
-                    end
-                end
-            end
-        end))
-
-        LuciaSpy:Clean(bedwars.Client:Get("PiggyBankPop"):Connect(function(self)
-            if not LuciaSpy.Enabled then return end
-            local plr = self.awardedPlayer
-            if not plr then return end
-            if IgnoreTeammatesSpy and IgnoreTeammatesSpy.Enabled then
-                if plr == lplr or (plr.Team and plr.Team == lplr.Team) then return end
-            end
-
-            local rewards = util:getRewardsFromCoins(self.coins)
-            local I, D, E = 0, 0, 0
-            for _, reward in ipairs(rewards) do
-                if reward.itemType == "iron" then
-                    I = I + (reward.amount or 0)
-                elseif reward.itemType == "diamond" then
-                    D = D + (reward.amount or 0)
-                elseif reward.itemType == "emerald" then
-                    E = E + (reward.amount or 0)
-                end
-            end
-
-            local playerName = getPlayerName(plr)
-            local teamName   = getTeamName(plr)
-            local loot = string.format("%d irons, %d diamonds, %d emeralds", I, D, E)
-
-            vape:CreateNotification(
-                "Lucia Spy",
-                string.format("%s (%s) opened their pinata and got %s", playerName, teamName, loot),
-                8
-            )
-
-            for pinataPart, data in pairs(trackedPinatas) do
-                if data.player and data.player.UserId == plr.UserId then
-                    trackedPinatas[pinataPart] = nil
-                end
-            end
-        end))
-
-        local counter = 0
-        LuciaSpy:Clean(runService.Heartbeat:Connect(function()
-            if not LuciaSpy.Enabled then return end
-            counter = counter + 1
-            if counter % 6 ~= 0 then return end
-
-            local toRemove = {}
-            for pinataPart, data in pairs(trackedPinatas) do
-                if pinataPart and pinataPart.Parent then
-                    local currentCandy = getCandyAmount(pinataPart)
-                    if currentCandy ~= data.lastCandy then
-                        local difference = currentCandy - data.lastCandy
-                        if difference > 0 and data.player then
-                            local playerName = getPlayerName(data.player)
-                            local teamName   = getTeamName(data.player)
-                            vape:CreateNotification(
-                                "Lucia Spy",
-                                string.format("%s (%s) deposited %d candy (now %d)", playerName, teamName, difference, currentCandy),
-                                5
-                            )
-                        end
-                        data.lastCandy = currentCandy
-                    end
-                else
-                    if data.exists and data.player then
-                        local timeSincePlaced = tick() - (data.placedTime or tick())
-                        if timeSincePlaced > 2 then
-                            local playerName = getPlayerName(data.player)
-                            local teamName   = getTeamName(data.player)
-                            vape:CreateNotification(
-                                "Lucia Spy",
-                                string.format("%s (%s) broke their pinata (had %d candy)", playerName, teamName, data.lastCandy),
-                                5
-                            )
-                        end
-                    end
-                    table.insert(toRemove, pinataPart)
-                end
-            end
-
-            for _, pinataPart in ipairs(toRemove) do
-                trackedPinatas[pinataPart] = nil
-            end
-        end))
-    end
-
-    LuciaSpy = vape.Categories.Kits:CreateModule({
-        Name    = "LuciaSpy",
-        Tooltip = "Notifies when players deposit, break, or open pinatas",
-        Function = function(callback)
-            if callback then
-                setupLuciaSpy()
-            else
-                table.clear(trackedPinatas)
-            end
-        end
-    })
-
-    IgnoreTeammatesSpy = LuciaSpy:CreateToggle({
-        Name    = "Ignore Teammates",
-        Default = true,
-        Tooltip = "Don't notify for teammates"
-    })
-
-    DisplayNameToggle = LuciaSpy:CreateToggle({
-        Name    = "Display Name",
-        Default = false,
-        Tooltip = "Show display names instead of usernames"
-    })
-end)
-
-run(function()
 	local SkinChanger
 	local Players = playersService
 	local RunService = runService
@@ -35434,348 +34991,314 @@ run(function()
 		KitSkinCtrl = KC.Controllers.KitSkinController
 	end)
 
-	local BOW_ROT = CFrame.Angles(0, math.rad(90), 0)
+	local BOW_ROT = CFrame.Angles(0, math.rad(-90), 0)
+	local CROSSBOW_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(-360), 0)
+	local LUNAR_CROSSBOW_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, -190, math.rad(-180))
+	local VICTORIOUS_ARCHER_BOW_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, -52, math.rad(90))
+	local VICTORIOUS_ARCHER_CROSSBOW_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, -190, math.rad(-180))
+	local VICTORIOUS_ARCHER_HEADHUNTER_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(180), 0)
+	local HEADHUNTER_ROT = CFrame.new(0.4, 0, 0) * CFrame.Angles(0, math.rad(360), 0)
+	local AXE_ROT = CFrame.new(0, 0, -0.4) * CFrame.Angles(0, math.rad(90), 0)
+	local PICKAXE_ROT = CFrame.new(0, 0, -0.1) * CFrame.Angles(0, math.rad(110), 0)
+	local LASSO_ROT = CFrame.Angles(0, math.rad(90), 0)
+	local STAFF_ROT = CFrame.Angles(0, math.rad(90), 0)
+	local SWORD_ROT = CFrame.new(0, -1.7, 0) * CFrame.Angles(0, math.rad(-180), 0)
+	local HEARTBEAM_SWORD_ROT = CFrame.new(0, -1.2, 0) * CFrame.Angles(0, math.rad(0), 0)
+	local LIFE_BOW_ROT = CFrame.Angles(0, math.rad(-20), 0)
+	local DAO_ROT = CFrame.new(0, -1.7, 0) * CFrame.Angles(0, math.rad(-180), 0)
+	local VIC_ROT = CFrame.new(0, -1.9, 0) * CFrame.Angles(0, math.rad(360), 0)
+	local HEXED_DAO_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, 160, math.rad(-180))
+	local SNOW_DAO_ROT = CFrame.new(-0.2, -0.9, 0) * CFrame.Angles(0, math.rad(-180), 0)
+	local HARPOON_ROT = CFrame.new(0, -1.4, -0.15) * CFrame.Angles(0, math.rad(180), 0)
+	local TRIDENT_ROT = CFrame.new(0, 0.5, 0.05) * CFrame.Angles(0, math.rad(180), 0)
+	local LYLA_BOW_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(30, -30, 183.56)
+	local LYLA_CROSSBOW_ROT = CFrame.Angles(math.rad(0), math.rad(180), math.rad(0))
+	local LYLA_HEADHUNTER_ROT = CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(0), 0)
+
+	local CANNON_HAND_SCALE = 0.34
+	local CANNON_PLACED_OFFSET = CFrame.new(0, -1.0, 0)
+	local CANNON_TOOL_NAME = "cannon"
+
+	local CANNON_SKIN_NAMES = {
+		["Victorious Cannon"] = {
+			Gold = "cannon_gold_victorious",
+			Platinum = "cannon_platinum_victorious",
+			Diamond = "cannon_diamond_victorious",
+			Emerald = "cannon_emerald_victorious",
+			Nightmare = "cannon_nightmare_victorious",
+		},
+		["Ghost Cannon"] = { Default = "cannon_ghost" },
+		["Deep Sea Cannon"] = { Default = "cannon_deepsea" },
+	}
+
+	local CANNON_SOUND_NAMES = {
+		Gold = "CANNON_FIRE_VICTORIOUS_NIGHTMARE",
+		Platinum = "CANNON_FIRE_VICTORIOUS_NIGHTMARE",
+		Diamond = "CANNON_FIRE_VICTORIOUS_DIAMOND",
+		Emerald = "CANNON_FIRE_VICTORIOUS_EMERALD",
+		Nightmare = "CANNON_FIRE_VICTORIOUS_NIGHTMARE",
+	}
 
 	local SKIN_OFFSETS = {
-		["nightmare_victorious_flower_bow"]          = BOW_ROT,
-		["emerald_victorious_flower_bow"]            = BOW_ROT,
-		["diamond_victorious_flower_bow"]            = BOW_ROT,
-		["platinum_victorious_flower_bow"]           = BOW_ROT,
-		["gold_victorious_flower_bow"]               = BOW_ROT,
-		["flower_bow_frost_queen"]                   = BOW_ROT,
-		["nightmare_victorious_flower_crossbow"]     = BOW_ROT,
-		["emerald_victorious_flower_crossbow"]       = BOW_ROT,
-		["diamond_victorious_flower_crossbow"]       = BOW_ROT,
-		["platinum_victorious_flower_crossbow"]      = BOW_ROT,
-		["gold_victorious_flower_crossbow"]          = BOW_ROT,
-		["flower_crossbow_frost_queen"]              = BOW_ROT,
-		["nightmare_victorious_flower_headhunter"]   = BOW_ROT,
-		["emerald_victorious_flower_headhunter"]     = BOW_ROT,
-		["diamond_victorious_flower_headhunter"]     = BOW_ROT,
-		["platinum_victorious_flower_headhunter"]    = BOW_ROT,
-		["gold_victorious_flower_headhunter"]        = BOW_ROT,
-		["flower_headhunter_frost_queen"]            = BOW_ROT,
-		["wood_bow_victorious_nightmare"]            = BOW_ROT,
-		["wood_bow_victorious_emerald"]              = BOW_ROT,
-		["wood_bow_victorious_diamond"]              = BOW_ROT,
-		["wood_bow_victorious_platinum"]             = BOW_ROT,
-		["wood_bow_victorious_gold"]                 = BOW_ROT,
-		["wood_bow_lunar_dragon"]                    = BOW_ROT,
-		["tactical_crossbow_victorious_nightmare"]   = BOW_ROT,
-		["tactical_crossbow_victorious_emerald"]     = BOW_ROT,
-		["tactical_crossbow_victorious_diamond"]     = BOW_ROT,
-		["tactical_crossbow_victorious_platinum"]    = BOW_ROT,
-		["tactical_crossbow_victorious_gold"]        = BOW_ROT,
-		["tactical_crossbow_lunar_dragon"]           = BOW_ROT,
-		["tactical_headhunter_victorious_nightmare"] = BOW_ROT,
-		["tactical_headhunter_victorious_emerald"]   = BOW_ROT,
-		["tactical_headhunter_victorious_diamond"]   = BOW_ROT,
-		["tactical_headhunter_victorious_platinum"]  = BOW_ROT,
-		["tactical_headhunter_victorious_gold"]      = BOW_ROT,
-		["tactical_headhunter_lunar_dragon"]         = BOW_ROT,
-		["life_bow_mummy"]                           = BOW_ROT,
-		["life_crossbow_mummy"]                      = BOW_ROT,
-		["life_headhunter_mummy"]                    = BOW_ROT,
-		["victorious_gold_triton"]                   = BOW_ROT,
-		["victorious_platinum_triton"]               = BOW_ROT,
-		["victorious_diamond_triton"]                = BOW_ROT,
-		["victorious_emerald_triton"]                = BOW_ROT,
-		["victorious_nightmare_triton"]              = BOW_ROT,
-		["demon_triton"]                             = BOW_ROT,
-		["lasso_mummy"]                              = CFrame.Angles(0, math.rad(90), 0),
-		["lasso_wrangler_reindeer_lassy"]            = CFrame.Angles(0, math.rad(90), 0),
-		["lasso_lifeguard"]                          = CFrame.Angles(0, math.rad(90), 0),
+		["nightmare_victorious_flower_bow"] = LYLA_BOW_ROT,
+		["emerald_victorious_flower_bow"] = LYLA_BOW_ROT,
+		["diamond_victorious_flower_bow"] = LYLA_BOW_ROT,
+		["platinum_victorious_flower_bow"] = LYLA_BOW_ROT,
+		["gold_victorious_flower_bow"] = LYLA_BOW_ROT,
+		["nightmare_victorious_flower_crossbow"] = LYLA_CROSSBOW_ROT,
+		["emerald_victorious_flower_crossbow"] = LYLA_CROSSBOW_ROT,
+		["diamond_victorious_flower_crossbow"] = LYLA_CROSSBOW_ROT,
+		["platinum_victorious_flower_crossbow"] = LYLA_CROSSBOW_ROT,
+		["gold_victorious_flower_crossbow"] = LYLA_CROSSBOW_ROT,
+		["nightmare_victorious_flower_headhunter"] = LYLA_HEADHUNTER_ROT,
+		["emerald_victorious_flower_headhunter"] = LYLA_HEADHUNTER_ROT,
+		["diamond_victorious_flower_headhunter"] = LYLA_HEADHUNTER_ROT,
+		["platinum_victorious_flower_headhunter"] = LYLA_HEADHUNTER_ROT,
+		["gold_victorious_flower_headhunter"] = LYLA_HEADHUNTER_ROT,
+		["tactical_headhunter_victorious_nightmare"] = VICTORIOUS_ARCHER_HEADHUNTER_ROT,
+		["tactical_headhunter_victorious_emerald"] = VICTORIOUS_ARCHER_HEADHUNTER_ROT,
+		["tactical_headhunter_victorious_diamond"] = VICTORIOUS_ARCHER_HEADHUNTER_ROT,
+		["tactical_headhunter_victorious_platinum"] = VICTORIOUS_ARCHER_HEADHUNTER_ROT,
+		["tactical_headhunter_victorious_gold"] = VICTORIOUS_ARCHER_HEADHUNTER_ROT,
+		["flower_bow_frost_queen"] = BOW_ROT,
+		["tactical_crossbow_lunar_dragon"] = LUNAR_CROSSBOW_ROT,
+		["life_bow_mummy"] = LIFE_BOW_ROT,
+		["flower_headhunter_frost_queen"] = HEADHUNTER_ROT,
+		["wood_sword_darkvalentine"] = SWORD_ROT,
+		["stone_sword_darkvalentine"] = SWORD_ROT,
+		["iron_sword_darkvalentine"] = SWORD_ROT,
+		["diamond_sword_darkvalentine"] = SWORD_ROT,
+		["emerald_sword_darkvalentine"] = SWORD_ROT,
+		["wood_sword_heartbeam"] = HEARTBEAM_SWORD_ROT,
+		["stone_sword_heartbeam"] = HEARTBEAM_SWORD_ROT,
+		["iron_sword_heartbeam"] = HEARTBEAM_SWORD_ROT,
+		["diamond_sword_heartbeam"] = HEARTBEAM_SWORD_ROT,
+		["emerald_sword_heartbeam"] = HEARTBEAM_SWORD_ROT,
+		["wood_bow_victorious_nightmare"] = VICTORIOUS_ARCHER_BOW_ROT,
+		["wood_bow_victorious_emerald"] = VICTORIOUS_ARCHER_BOW_ROT,
+		["wood_bow_victorious_diamond"] = VICTORIOUS_ARCHER_BOW_ROT,
+		["wood_bow_victorious_platinum"] = VICTORIOUS_ARCHER_BOW_ROT,
+		["wood_bow_victorious_gold"] = VICTORIOUS_ARCHER_BOW_ROT,
+		["tactical_crossbow_victorious_nightmare"] = VICTORIOUS_ARCHER_CROSSBOW_ROT,
+		["tactical_crossbow_victorious_emerald"] = VICTORIOUS_ARCHER_CROSSBOW_ROT,
+		["tactical_crossbow_victorious_diamond"] = VICTORIOUS_ARCHER_CROSSBOW_ROT,
+		["tactical_crossbow_victorious_platinum"] = VICTORIOUS_ARCHER_CROSSBOW_ROT,
+		["tactical_crossbow_victorious_gold"] = VICTORIOUS_ARCHER_CROSSBOW_ROT,
+		["life_crossbow_mummy"] = CROSSBOW_ROT,
+		["life_headhunter_mummy"] = HEADHUNTER_ROT,
+		["victorious_gold_triton"] = TRIDENT_ROT,
+		["victorious_platinum_triton"] = TRIDENT_ROT,
+		["victorious_diamond_triton"] = TRIDENT_ROT,
+		["victorious_emerald_triton"] = TRIDENT_ROT,
+		["victorious_nightmare_triton"] = TRIDENT_ROT,
+		["demon_triton"] = HARPOON_ROT,
+		["lasso_mummy"] = LASSO_ROT,
+		["lasso_wrangler_reindeer_lassy"] = LASSO_ROT,
+		["lasso_lifeguard"] = LASSO_ROT,
+		["wood_axe_darkvalentine"] = AXE_ROT,
+		["stone_axe_darkvalentine"] = AXE_ROT,
+		["iron_axe_darkvalentine"] = AXE_ROT,
+		["diamond_axe_darkvalentine"] = AXE_ROT,
+		["wood_axe_valentine"] = AXE_ROT,
+		["stone_axe_valentine"] = AXE_ROT,
+		["iron_axe_valentine"] = AXE_ROT,
+		["diamond_axe_valentine"] = AXE_ROT,
+		["wood_pickaxe_darkvalentine"] = PICKAXE_ROT,
+		["stone_pickaxe_darkvalentine"] = PICKAXE_ROT,
+		["iron_pickaxe_darkvalentine"] = PICKAXE_ROT,
+		["diamond_pickaxe_darkvalentine"] = PICKAXE_ROT,
+		["wood_pickaxe_valentine"] = PICKAXE_ROT,
+		["stone_pickaxe_valentine"] = PICKAXE_ROT,
+		["iron_pickaxe_valentine"] = PICKAXE_ROT,
+		["diamond_pickaxe_valentine"] = PICKAXE_ROT,
+		["gold_victorious_wizard_staff"] = STAFF_ROT,
+		["gold_victorious_wizard_staff_2"] = STAFF_ROT,
+		["gold_victorious_wizard_staff_3"] = STAFF_ROT,
+		["platinum_victorious_wizard_staff"] = STAFF_ROT,
+		["platinum_victorious_wizard_staff_2"] = STAFF_ROT,
+		["platinum_victorious_wizard_staff_3"] = STAFF_ROT,
+		["diamond_victorious_wizard_staff"] = STAFF_ROT,
+		["diamond_victorious_wizard_staff_2"] = STAFF_ROT,
+		["diamond_victorious_wizard_staff_3"] = STAFF_ROT,
+		["emerald_victorious_wizard_staff"] = STAFF_ROT,
+		["emerald_victorious_wizard_staff_2"] = STAFF_ROT,
+		["emerald_victorious_wizard_staff_3"] = STAFF_ROT,
+		["nightmare_victorious_wizard_staff"] = STAFF_ROT,
+		["nightmare_victorious_wizard_staff_2"] = STAFF_ROT,
+		["nightmare_victorious_wizard_staff_3"] = STAFF_ROT,
+		["wood_dao_victorious"] = VIC_ROT,
+		["stone_dao_victorious"] = VIC_ROT,
+		["iron_dao_victorious"] = VIC_ROT,
+		["diamond_dao_victorious"] = VIC_ROT,
+		["emerald_dao_victorious"] = VIC_ROT,
+		["wood_dao_cursed"] = HEXED_DAO_ROT,
+		["stone_dao_cursed"] = HEXED_DAO_ROT,
+		["iron_dao_cursed"] = HEXED_DAO_ROT,
+		["diamond_dao_cursed"] = HEXED_DAO_ROT,
+		["emerald_dao_cursed"] = HEXED_DAO_ROT,
+		["wood_dao_tiger"] = DAO_ROT,
+		["stone_dao_tiger"] = DAO_ROT,
+		["iron_dao_tiger"] = DAO_ROT,
+		["diamond_dao_tiger"] = DAO_ROT,
+		["emerald_dao_tiger"] = DAO_ROT,
+		["wood_dao_snow_rabbit"] = SNOW_DAO_ROT,
+		["stone_dao_snow_rabbit"] = SNOW_DAO_ROT,
+		["iron_dao_snow_rabbit"] = SNOW_DAO_ROT,
+		["diamond_dao_snow_rabbit"] = SNOW_DAO_ROT,
+		["emerald_dao_snow_rabbit"] = SNOW_DAO_ROT,
 	}
 
 	local KIT_SKIN_MAP = {
-		["Victorious Lyla"] = {
-			Gold = "gold_victorious_lyla",
-			Platinum = "platinum_victorious_lyla",
-			Diamond = "diamond_victorious_lyla",
-			Emerald = "emerald_victorious_lyla",
-			Nightmare = "nightmare_victorious_lyla",
-		},
+		["Victorious Lyla"] = { Gold = "gold_victorious_lyla", Platinum = "platinum_victorious_lyla", Diamond = "diamond_victorious_lyla", Emerald = "emerald_victorious_lyla", Nightmare = "nightmare_victorious_lyla" },
 		["Frost Queen Lyla"] = { Default = "flower_bee_frost_queen" },
-		["Victorious Archer"] = {
-			Gold = "archer_victorious_gold",
-			Platinum = "archer_victorious_platinum",
-			Diamond = "archer_victorious_diamond",
-			Emerald = "archer_victorious_emerald",
-			Nightmare = "archer_victorious_nightmare",
-		},
+		["Victorious Archer"] = { Gold = "archer_victorious_gold", Platinum = "archer_victorious_platinum", Diamond = "archer_victorious_diamond", Emerald = "archer_victorious_emerald", Nightmare = "archer_victorious_nightmare" },
 		["Lunar Dragon Archer"] = { Default = "archer_lunar_dragon" },
 		["Victorious Yuzi"] = { Default = "yuzi_victorious" },
-		["Hexed Yuzi"]       = { Default = "dasher_cursed" },
-		["Tiger Yuzi"]       = { Default = "dasher_tiger" },
+		["Hexed Yuzi"] = { Default = "dasher_cursed" },
+		["Tiger Yuzi"] = { Default = "dasher_tiger" },
 		["Snow Rabbit Yuzi"] = { Default = "dasher_snow_rabbit" },
-		["Victorious Zeno"] = {
-			Gold = "gold_victorious_wizard",
-			Platinum = "platinum_victorious_wizard",
-			Diamond = "diamond_victorious_wizard",
-			Emerald = "emerald_victorious_wizard",
-			Nightmare = "nightmare_victorious_wizard",
-		},
-		["Victorious Triton"] = {
-			Gold = "victorious_gold_triton",
-			Platinum = "victorious_platinum_triton",
-			Diamond = "victorious_diamond_triton",
-			Emerald = "victorious_emerald_triton",
-			Nightmare = "victorious_nightmare_triton",
-		},
-		["Demon Triton"]     = { Default = "demon_triton" },
-		["Mummy Life Bow"]   = { Default = "mummy_nazar" },
-		["Mummy Lasso"]      = { Default = "cowgirl_mummy" },
-		["Victorious Cannon"] = {
-			Gold = "gold_victorious_davey",
-			Platinum = "platinum_victorious_davey",
-			Diamond = "diamond_victorious_davey",
-			Emerald = "emerald_victorious_davey",
-			Nightmare = "nightmare_victorious_davey",
-		},
-		["Ghost Cannon"]    = { Default = "davey_ghost" },
+		["Victorious Zeno"] = { Gold = "gold_victorious_wizard", Platinum = "platinum_victorious_wizard", Diamond = "diamond_victorious_wizard", Emerald = "emerald_victorious_wizard", Nightmare = "nightmare_victorious_wizard" },
+		["Victorious Triton"] = { Gold = "victorious_gold_triton", Platinum = "victorious_platinum_triton", Diamond = "victorious_diamond_triton", Emerald = "victorious_emerald_triton", Nightmare = "victorious_nightmare_triton" },
+		["Demon Triton"] = { Default = "demon_triton" },
+		["Mummy Life Bow"] = { Default = "mummy_nazar" },
+		["Mummy Lasso"] = { Default = "cowgirl_mummy" },
+		["Victorious Cannon"] = { Gold = "gold_victorious_davey", Platinum = "platinum_victorious_davey", Diamond = "diamond_victorious_davey", Emerald = "emerald_victorious_davey", Nightmare = "nightmare_victorious_davey" },
+		["Ghost Cannon"] = { Default = "davey_ghost" },
 		["Deep Sea Cannon"] = { Default = "davey_deepsea" },
 	}
 
 	local STORE_SKIN_MAP = {
-		["Balloon Swords"] = function()
-			return {
-				{ ItemType.WOOD_SWORD,    ItemSkinType.BALLOON_WOOD_SWORD    },
-				{ ItemType.STONE_SWORD,   ItemSkinType.BALLOON_STONE_SWORD   },
-				{ ItemType.IRON_SWORD,    ItemSkinType.BALLOON_IRON_SWORD    },
-				{ ItemType.DIAMOND_SWORD, ItemSkinType.BALLOON_DIAMOND_SWORD },
-				{ ItemType.EMERALD_SWORD, ItemSkinType.BALLOON_EMERALD_SWORD },
-			}
-		end,
-		["Banana Swords"] = function()
-			return {
-				{ ItemType.WOOD_SWORD,    ItemSkinType.BANANA_WOOD_SWORD    },
-				{ ItemType.STONE_SWORD,   ItemSkinType.BANANA_STONE_SWORD   },
-				{ ItemType.IRON_SWORD,    ItemSkinType.BANANA_IRON_SWORD    },
-				{ ItemType.DIAMOND_SWORD, ItemSkinType.BANANA_DIAMOND_SWORD },
-				{ ItemType.EMERALD_SWORD, ItemSkinType.BANANA_EMERALD_SWORD },
-			}
-		end,
-		["Valentine Swords"] = function()
-			return {
-				{ ItemType.WOOD_SWORD,    ItemSkinType.VALENTINE_WOOD_SWORD    },
-				{ ItemType.STONE_SWORD,   ItemSkinType.VALENTINE_STONE_SWORD   },
-				{ ItemType.IRON_SWORD,    ItemSkinType.VALENTINE_IRON_SWORD    },
-				{ ItemType.DIAMOND_SWORD, ItemSkinType.VALENTINE_DIAMOND_SWORD },
-				{ ItemType.EMERALD_SWORD, ItemSkinType.VALENTINE_EMERALD_SWORD },
-			}
-		end,
-		["Darkheart Swords"] = function()
-			return {
-				{ ItemType.WOOD_SWORD,    ItemSkinType.DARKVALENTINE_WOOD_SWORD    },
-				{ ItemType.STONE_SWORD,   ItemSkinType.DARKVALENTINE_STONE_SWORD   },
-				{ ItemType.IRON_SWORD,    ItemSkinType.DARKVALENTINE_IRON_SWORD    },
-				{ ItemType.DIAMOND_SWORD, ItemSkinType.DARKVALENTINE_DIAMOND_SWORD },
-				{ ItemType.EMERALD_SWORD, ItemSkinType.DARKVALENTINE_EMERALD_SWORD },
-			}
-		end,
-		["Heartbeam Swords"] = function()
-			return {
-				{ ItemType.WOOD_SWORD,    ItemSkinType.HEARTBEAM_WOOD_SWORD    },
-				{ ItemType.STONE_SWORD,   ItemSkinType.HEARTBEAM_STONE_SWORD   },
-				{ ItemType.IRON_SWORD,    ItemSkinType.HEARTBEAM_IRON_SWORD    },
-				{ ItemType.DIAMOND_SWORD, ItemSkinType.HEARTBEAM_DIAMOND_SWORD },
-				{ ItemType.EMERALD_SWORD, ItemSkinType.HEARTBEAM_EMERALD_SWORD },
-			}
-		end,
-		["Valentine Pickaxes"] = function()
-			return {
-				{ ItemType.WOOD_PICKAXE,    ItemSkinType.VALENTINE_WOOD_PICKAXE    },
-				{ ItemType.STONE_PICKAXE,   ItemSkinType.VALENTINE_STONE_PICKAXE   },
-				{ ItemType.IRON_PICKAXE,    ItemSkinType.VALENTINE_IRON_PICKAXE    },
-				{ ItemType.DIAMOND_PICKAXE, ItemSkinType.VALENTINE_DIAMOND_PICKAXE },
-			}
-		end,
-		["Darkheart Pickaxes"] = function()
-			return {
-				{ ItemType.WOOD_PICKAXE,    ItemSkinType.DARKVALENTINE_WOOD_PICKAXE    },
-				{ ItemType.STONE_PICKAXE,   ItemSkinType.DARKVALENTINE_STONE_PICKAXE   },
-				{ ItemType.IRON_PICKAXE,    ItemSkinType.DARKVALENTINE_IRON_PICKAXE    },
-				{ ItemType.DIAMOND_PICKAXE, ItemSkinType.DARKVALENTINE_DIAMOND_PICKAXE },
-			}
-		end,
-		["Valentine Axes"] = function()
-			return {
-				{ ItemType.WOOD_AXE,    ItemSkinType.VALENTINE_WOOD_AXE    },
-				{ ItemType.STONE_AXE,   ItemSkinType.VALENTINE_STONE_AXE   },
-				{ ItemType.IRON_AXE,    ItemSkinType.VALENTINE_IRON_AXE    },
-				{ ItemType.DIAMOND_AXE, ItemSkinType.VALENTINE_DIAMOND_AXE },
-			}
-		end,
-		["Darkheart Axes"] = function()
-			return {
-				{ ItemType.WOOD_AXE,    ItemSkinType.DARKVALENTINE_WOOD_AXE    },
-				{ ItemType.STONE_AXE,   ItemSkinType.DARKVALENTINE_STONE_AXE   },
-				{ ItemType.IRON_AXE,    ItemSkinType.DARKVALENTINE_IRON_AXE    },
-				{ ItemType.DIAMOND_AXE, ItemSkinType.DARKVALENTINE_DIAMOND_AXE },
-			}
-		end,
-		["Mummy Life Bow"] = function()
-			return {
-				{ ItemType.LIFE_BOW,        ItemSkinType.LIFE_BOW_MUMMY        },
-				{ ItemType.LIFE_CROSSBOW,   ItemSkinType.LIFE_CROSSBOW_MUMMY   },
-				{ ItemType.LIFE_HEADHUNTER, ItemSkinType.LIFE_HEADHUNTER_MUMMY },
-			}
-		end,
-		["Mummy Lasso"] = function()
-			return { { ItemType.LASSO, ItemSkinType.LASSO_MUMMY } }
-		end,
+		["Balloon Swords"] = function() return { { ItemType.WOOD_SWORD, ItemSkinType.BALLOON_WOOD_SWORD }, { ItemType.STONE_SWORD, ItemSkinType.BALLOON_STONE_SWORD }, { ItemType.IRON_SWORD, ItemSkinType.BALLOON_IRON_SWORD }, { ItemType.DIAMOND_SWORD, ItemSkinType.BALLOON_DIAMOND_SWORD }, { ItemType.EMERALD_SWORD, ItemSkinType.BALLOON_EMERALD_SWORD } } end,
+		["Banana Swords"] = function() return { { ItemType.WOOD_SWORD, ItemSkinType.BANANA_WOOD_SWORD }, { ItemType.STONE_SWORD, ItemSkinType.BANANA_STONE_SWORD }, { ItemType.IRON_SWORD, ItemSkinType.BANANA_IRON_SWORD }, { ItemType.DIAMOND_SWORD, ItemSkinType.BANANA_DIAMOND_SWORD }, { ItemType.EMERALD_SWORD, ItemSkinType.BANANA_EMERALD_SWORD } } end,
+		["Valentine Swords"] = function() return { { ItemType.WOOD_SWORD, ItemSkinType.VALENTINE_WOOD_SWORD }, { ItemType.STONE_SWORD, ItemSkinType.VALENTINE_STONE_SWORD }, { ItemType.IRON_SWORD, ItemSkinType.VALENTINE_IRON_SWORD }, { ItemType.DIAMOND_SWORD, ItemSkinType.VALENTINE_DIAMOND_SWORD }, { ItemType.EMERALD_SWORD, ItemSkinType.VALENTINE_EMERALD_SWORD } } end,
+		["Darkheart Swords"] = function() return { { ItemType.WOOD_SWORD, ItemSkinType.DARKVALENTINE_WOOD_SWORD }, { ItemType.STONE_SWORD, ItemSkinType.DARKVALENTINE_STONE_SWORD }, { ItemType.IRON_SWORD, ItemSkinType.DARKVALENTINE_IRON_SWORD }, { ItemType.DIAMOND_SWORD, ItemSkinType.DARKVALENTINE_DIAMOND_SWORD }, { ItemType.EMERALD_SWORD, ItemSkinType.DARKVALENTINE_EMERALD_SWORD } } end,
+		["Heartbeam Swords"] = function() return { { ItemType.WOOD_SWORD, ItemSkinType.HEARTBEAM_WOOD_SWORD }, { ItemType.STONE_SWORD, ItemSkinType.HEARTBEAM_STONE_SWORD }, { ItemType.IRON_SWORD, ItemSkinType.HEARTBEAM_IRON_SWORD }, { ItemType.DIAMOND_SWORD, ItemSkinType.HEARTBEAM_DIAMOND_SWORD }, { ItemType.EMERALD_SWORD, ItemSkinType.HEARTBEAM_EMERALD_SWORD } } end,
+		["Valentine Pickaxes"] = function() return { { ItemType.WOOD_PICKAXE, ItemSkinType.VALENTINE_WOOD_PICKAXE }, { ItemType.STONE_PICKAXE, ItemSkinType.VALENTINE_STONE_PICKAXE }, { ItemType.IRON_PICKAXE, ItemSkinType.VALENTINE_IRON_PICKAXE }, { ItemType.DIAMOND_PICKAXE, ItemSkinType.VALENTINE_DIAMOND_PICKAXE } } end,
+		["Darkheart Pickaxes"] = function() return { { ItemType.WOOD_PICKAXE, ItemSkinType.DARKVALENTINE_WOOD_PICKAXE }, { ItemType.STONE_PICKAXE, ItemSkinType.DARKVALENTINE_STONE_PICKAXE }, { ItemType.IRON_PICKAXE, ItemSkinType.DARKVALENTINE_IRON_PICKAXE }, { ItemType.DIAMOND_PICKAXE, ItemSkinType.DARKVALENTINE_DIAMOND_PICKAXE } } end,
+		["Valentine Axes"] = function() return { { ItemType.WOOD_AXE, ItemSkinType.VALENTINE_WOOD_AXE }, { ItemType.STONE_AXE, ItemSkinType.VALENTINE_STONE_AXE }, { ItemType.IRON_AXE, ItemSkinType.VALENTINE_IRON_AXE }, { ItemType.DIAMOND_AXE, ItemSkinType.VALENTINE_DIAMOND_AXE } } end,
+		["Darkheart Axes"] = function() return { { ItemType.WOOD_AXE, ItemSkinType.DARKVALENTINE_WOOD_AXE }, { ItemType.STONE_AXE, ItemSkinType.DARKVALENTINE_STONE_AXE }, { ItemType.IRON_AXE, ItemSkinType.DARKVALENTINE_IRON_AXE }, { ItemType.DIAMOND_AXE, ItemSkinType.DARKVALENTINE_DIAMOND_AXE } } end,
+		["Mummy Life Bow"] = function() return { { ItemType.LIFE_BOW, ItemSkinType.LIFE_BOW_MUMMY }, { ItemType.LIFE_CROSSBOW, ItemSkinType.LIFE_CROSSBOW_MUMMY }, { ItemType.LIFE_HEADHUNTER, ItemSkinType.LIFE_HEADHUNTER_MUMMY } } end,
+		["Mummy Lasso"] = function() return { { ItemType.LASSO, ItemSkinType.LASSO_MUMMY } } end,
 	}
 
-	local SKIN_DATA = {
-		["Victorious Cannon"] = function(t)
-			return { cannon = "cannon_"..t:lower().."_victorious" }
-		end,
-		["Ghost Cannon"]    = function() return { cannon = "cannon_ghost"   } end,
-		["Deep Sea Cannon"] = function() return { cannon = "cannon_deepsea" } end,
+	local function yuziDaoMap(suffix)
+		return {
+			wood_dao = "wood_dao_" .. suffix,
+			stone_dao = "stone_dao_" .. suffix,
+			iron_dao = "iron_dao_" .. suffix,
+			diamond_dao = "diamond_dao_" .. suffix,
+			emerald_dao = "emerald_dao_" .. suffix,
+		}
+	end
 
+	local SKIN_DATA = {
 		["Victorious Lyla"] = function(t)
 			local lt = t:lower()
 			return {
-				flower_bow        = lt.."_victorious_flower_bow",
-				flower_crossbow   = lt.."_victorious_flower_crossbow",
-				flower_headhunter = lt.."_victorious_flower_headhunter",
+				flower_bow = lt .. "_victorious_flower_bow",
+				flower_crossbow = lt .. "_victorious_flower_crossbow",
+				flower_headhunter = lt .. "_victorious_flower_headhunter",
 			}
 		end,
 		["Frost Queen Lyla"] = function()
 			return {
-				flower_bow        = "flower_bow_frost_queen",
-				flower_crossbow   = "flower_crossbow_frost_queen",
+				flower_bow = "flower_bow_frost_queen",
+				flower_crossbow = "flower_crossbow_frost_queen",
 				flower_headhunter = "flower_headhunter_frost_queen",
 			}
 		end,
-
 		["Victorious Archer"] = function(t)
 			local lt = t:lower()
 			return {
-				wood_bow            = "wood_bow_victorious_"..lt,
-				tactical_crossbow   = "tactical_crossbow_victorious_"..lt,
-				tactical_headhunter = "tactical_headhunter_victorious_"..lt,
+				wood_bow = "wood_bow_victorious_" .. lt,
+				tactical_crossbow = "tactical_crossbow_victorious_" .. lt,
+				tactical_headhunter = "tactical_headhunter_victorious_" .. lt,
 			}
 		end,
 		["Lunar Dragon Archer"] = function()
 			return {
-				wood_bow            = "wood_bow_lunar_dragon",
-				tactical_crossbow   = "tactical_crossbow_lunar_dragon",
+				wood_bow = "wood_bow_lunar_dragon",
+				tactical_crossbow = "tactical_crossbow_lunar_dragon",
 				tactical_headhunter = "tactical_headhunter_lunar_dragon",
 			}
 		end,
-
 		["Victorious Triton"] = function(t)
-			return { harpoon = "victorious_"..t:lower().."_triton" }
+			return { harpoon = "victorious_" .. t:lower() .. "_triton" }
 		end,
 		["Demon Triton"] = function() return { harpoon = "demon_triton" } end,
-
-		["Victorious Yuzi"] = function()
-			return {
-				wood_dao    = "wood_dao_victorious",  stone_dao   = "stone_dao_victorious",
-				iron_dao    = "iron_dao_victorious",  diamond_dao = "diamond_dao_victorious",
-				emerald_dao = "emerald_dao_victorious",
-			}
-		end,
-		["Hexed Yuzi"] = function()
-			return {
-				wood_dao    = "wood_dao_cursed",  stone_dao   = "stone_dao_cursed",
-				iron_dao    = "iron_dao_cursed",  diamond_dao = "diamond_dao_cursed",
-				emerald_dao = "emerald_dao_cursed",
-			}
-		end,
-		["Tiger Yuzi"] = function()
-			return {
-				wood_dao    = "wood_dao_tiger",  stone_dao   = "stone_dao_tiger",
-				iron_dao    = "iron_dao_tiger",  diamond_dao = "diamond_dao_tiger",
-				emerald_dao = "emerald_dao_tiger",
-			}
-		end,
-		["Snow Rabbit Yuzi"] = function()
-			return {
-				wood_dao    = "wood_dao_snow_rabbit",  stone_dao   = "stone_dao_snow_rabbit",
-				iron_dao    = "iron_dao_snow_rabbit",  diamond_dao = "diamond_dao_snow_rabbit",
-				emerald_dao = "emerald_dao_snow_rabbit",
-			}
-		end,
-
+		["Victorious Yuzi"] = function() return yuziDaoMap("victorious") end,
+		["Hexed Yuzi"] = function() return yuziDaoMap("cursed") end,
+		["Tiger Yuzi"] = function() return yuziDaoMap("tiger") end,
+		["Snow Rabbit Yuzi"] = function() return yuziDaoMap("snow_rabbit") end,
 		["Victorious Zeno"] = function(t)
 			local lt = t:lower()
 			return {
-				wizard_staff   = lt.."_victorious_wizard_staff",
-				wizard_staff_2 = lt.."_victorious_wizard_staff_2",
-				wizard_staff_3 = lt.."_victorious_wizard_staff_3",
+				wizard_staff = lt .. "_victorious_wizard_staff",
+				wizard_staff_2 = lt .. "_victorious_wizard_staff_2",
+				wizard_staff_3 = lt .. "_victorious_wizard_staff_3",
 			}
 		end,
-
-		["Balloon Swords"] = function()
-			return {
-				wood_sword    = "balloon_wood_sword",   stone_sword   = "balloon_stone_sword",
-				iron_sword    = "balloon_iron_sword",   diamond_sword = "balloon_diamond_sword",
-				emerald_sword = "balloon_emerald_sword",
-			}
-		end,
-		["Banana Swords"] = function()
-			return {
-				wood_sword    = "banana_wood_sword",   stone_sword   = "banana_stone_sword",
-				iron_sword    = "banana_iron_sword",   diamond_sword = "banana_diamond_sword",
-				emerald_sword = "banana_emerald_sword",
-			}
-		end,
-		["Valentine Swords"] = function()
-			return {
-				wood_sword    = "wood_sword_valentine",   stone_sword   = "stone_sword_valentine",
-				iron_sword    = "iron_sword_valentine",   diamond_sword = "diamond_sword_valentine",
-				emerald_sword = "emerald_sword_valentine",
-			}
-		end,
-		["Darkheart Swords"] = function()
-			return {
-				wood_sword    = "wood_sword_darkvalentine",   stone_sword   = "stone_sword_darkvalentine",
-				iron_sword    = "iron_sword_darkvalentine",   diamond_sword = "diamond_sword_darkvalentine",
-				emerald_sword = "emerald_sword_darkvalentine",
-			}
-		end,
-		["Heartbeam Swords"] = function()
-			return {
-				wood_sword    = "wood_sword_heartbeam",   stone_sword   = "stone_sword_heartbeam",
-				iron_sword    = "iron_sword_heartbeam",   diamond_sword = "diamond_sword_heartbeam",
-				emerald_sword = "emerald_sword_heartbeam",
-			}
-		end,
-		["Valentine Pickaxes"] = function()
-			return {
-				wood_pickaxe    = "wood_pickaxe_valentine",   stone_pickaxe   = "stone_pickaxe_valentine",
-				iron_pickaxe    = "iron_pickaxe_valentine",   diamond_pickaxe = "diamond_pickaxe_valentine",
-			}
-		end,
-		["Darkheart Pickaxes"] = function()
-			return {
-				wood_pickaxe    = "wood_pickaxe_darkvalentine",   stone_pickaxe   = "stone_pickaxe_darkvalentine",
-				iron_pickaxe    = "iron_pickaxe_darkvalentine",   diamond_pickaxe = "diamond_pickaxe_darkvalentine",
-			}
-		end,
-		["Valentine Axes"] = function()
-			return {
-				wood_axe    = "wood_axe_valentine",   stone_axe   = "stone_axe_valentine",
-				iron_axe    = "iron_axe_valentine",   diamond_axe = "diamond_axe_valentine",
-			}
-		end,
-		["Darkheart Axes"] = function()
-			return {
-				wood_axe    = "wood_axe_darkvalentine",   stone_axe   = "stone_axe_darkvalentine",
-				iron_axe    = "iron_axe_darkvalentine",   diamond_axe = "diamond_axe_darkvalentine",
-			}
-		end,
-		["Mummy Lasso"]    = function() return { lasso = "lasso_mummy" } end,
-		["Mummy Life Bow"] = function()
-			return {
-				life_bow        = "life_bow_mummy",
-				life_crossbow   = "life_crossbow_mummy",
-				life_headhunter = "life_headhunter_mummy",
-			}
-		end,
+		["Balloon Swords"] = function() return { wood_sword = "balloon_wood_sword", stone_sword = "balloon_stone_sword", iron_sword = "balloon_iron_sword", diamond_sword = "balloon_diamond_sword", emerald_sword = "balloon_emerald_sword" } end,
+		["Banana Swords"] = function() return { wood_sword = "banana_wood_sword", stone_sword = "banana_stone_sword", iron_sword = "banana_iron_sword", diamond_sword = "banana_diamond_sword", emerald_sword = "banana_emerald_sword" } end,
+		["Valentine Swords"] = function() return { wood_sword = "wood_sword_valentine", stone_sword = "stone_sword_valentine", iron_sword = "iron_sword_valentine", diamond_sword = "diamond_sword_valentine", emerald_sword = "emerald_sword_valentine" } end,
+		["Darkheart Swords"] = function() return { wood_sword = "wood_sword_darkvalentine", stone_sword = "stone_sword_darkvalentine", iron_sword = "iron_sword_darkvalentine", diamond_sword = "diamond_sword_darkvalentine", emerald_sword = "emerald_sword_darkvalentine" } end,
+		["Heartbeam Swords"] = function() return { wood_sword = "wood_sword_heartbeam", stone_sword = "stone_sword_heartbeam", iron_sword = "iron_sword_heartbeam", diamond_sword = "diamond_sword_heartbeam", emerald_sword = "emerald_sword_heartbeam" } end,
+		["Valentine Pickaxes"] = function() return { wood_pickaxe = "wood_pickaxe_valentine", stone_pickaxe = "stone_pickaxe_valentine", iron_pickaxe = "iron_pickaxe_valentine", diamond_pickaxe = "diamond_pickaxe_valentine" } end,
+		["Darkheart Pickaxes"] = function() return { wood_pickaxe = "wood_pickaxe_darkvalentine", stone_pickaxe = "stone_pickaxe_darkvalentine", iron_pickaxe = "iron_pickaxe_darkvalentine", diamond_pickaxe = "diamond_pickaxe_darkvalentine" } end,
+		["Valentine Axes"] = function() return { wood_axe = "wood_axe_valentine", stone_axe = "stone_axe_valentine", iron_axe = "iron_axe_valentine", diamond_axe = "diamond_axe_valentine" } end,
+		["Darkheart Axes"] = function() return { wood_axe = "wood_axe_darkvalentine", stone_axe = "stone_axe_darkvalentine", iron_axe = "iron_axe_darkvalentine", diamond_axe = "diamond_axe_darkvalentine" } end,
+		["Mummy Lasso"] = function() return { lasso = "lasso_mummy" } end,
+		["Mummy Life Bow"] = function() return { life_bow = "life_bow_mummy", life_crossbow = "life_crossbow_mummy", life_headhunter = "life_headhunter_mummy" } end,
 	}
+
+	local TIERED_SKINS = {
+		["Victorious Lyla"] = true,
+		["Victorious Archer"] = true,
+		["Victorious Zeno"] = true,
+		["Victorious Triton"] = true,
+		["Victorious Cannon"] = true,
+	}
+
+	local function normalizeName(s)
+		return s:lower():gsub("[_%s%-]", "")
+	end
+
+	local function isCannonSkin()
+		return CANNON_SKIN_NAMES[CURRENT_ITEM_SKIN] ~= nil
+	end
+
+	local function getCurrentCannonSkinName()
+		local tbl = CANNON_SKIN_NAMES[CURRENT_ITEM_SKIN]
+		if not tbl then return nil end
+		return tbl[CURRENT_SKIN_TYPE] or tbl.Default
+	end
+
+	local function getCannonSkinSource(skinName)
+		local assets = RS:FindFirstChild("Assets")
+		if not assets then return nil end
+		local blocks = assets:FindFirstChild("Blocks")
+		if not blocks then return nil end
+		return blocks:FindFirstChild(skinName)
+	end
+
+	local function keepOriginalInvisible(tool)
+		local conn
+		conn = RunService.RenderStepped:Connect(function()
+			if not tool or not tool.Parent then
+				conn:Disconnect()
+				return
+			end
+			for _, d in ipairs(tool:GetDescendants()) do
+				if d:IsA("BasePart") and not d:IsDescendantOf(tool:FindFirstChild("LOCAL_ITEM_RESKIN") or game) then
+					d.LocalTransparencyModifier = 1
+					d.Transparency = 1
+				elseif (d:IsA("Decal") or d:IsA("Texture")) and not d:IsDescendantOf(tool:FindFirstChild("LOCAL_ITEM_RESKIN") or game) then
+					d.Transparency = 1
+				end
+			end
+		end)
+		table.insert(connections, conn)
+	end
 
 	local function getCurrentMappings()
 		local fn = SKIN_DATA[CURRENT_ITEM_SKIN]
@@ -35795,10 +35318,16 @@ run(function()
 		return fn() or {}
 	end
 
-	local tagged      = setmetatable({}, { __mode = "k" })
+	local tagged = setmetatable({}, { __mode = "k" })
 	local connections = {}
-	local oldGetKitSkin   = nil
+	local oldGetKitSkin = nil
 	local savedStoreSkins = {}
+
+	local cannonTagged = setmetatable({}, { __mode = "k" })
+	local cannonConnections = {}
+	local cannonRenderConns = {}
+	local oldFireCannon, oldLaunchSelf
+	local soundsHooked = false
 
 	local function firstBasePart(root)
 		for _, d in ipairs(root:GetDescendants()) do
@@ -35832,10 +35361,10 @@ run(function()
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") then
 				d.CanCollide = false
-				d.CanTouch   = false
-				d.CanQuery   = false
-				d.Massless   = true
-				d.Anchored   = false
+				d.CanTouch = false
+				d.CanQuery = false
+				d.Massless = true
+				d.Anchored = false
 			end
 		end
 	end
@@ -35843,10 +35372,10 @@ run(function()
 	local function weldAllTo(anchor, container)
 		for _, d in ipairs(container:GetDescendants()) do
 			if d:IsA("BasePart") and d ~= anchor then
-				local wc   = Instance.new("WeldConstraint")
-				wc.Part0   = anchor
-				wc.Part1   = d
-				wc.Parent  = anchor
+				local wc = Instance.new("WeldConstraint")
+				wc.Part0 = anchor
+				wc.Part1 = d
+				wc.Parent = anchor
 			end
 		end
 	end
@@ -35869,8 +35398,7 @@ run(function()
 		makeInvisible(tool)
 
 		local clone = source:Clone()
-		clone.Name  = "LOCAL_ITEM_RESKIN"
-
+		clone.Name = "LOCAL_ITEM_RESKIN"
 		for _, d in ipairs(clone:GetDescendants()) do
 			if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
 				pcall(d.Destroy, d)
@@ -35893,34 +35421,264 @@ run(function()
 		end
 
 		if not cloneAnchor then
-			clone:Destroy()
-			restoreVisibility(tool)
-			tagged[tool] = nil
-			return
+			clone:Destroy(); restoreVisibility(tool); tagged[tool] = nil; return
 		end
 
 		pcall(function() cloneAnchor.CFrame = origHandle.CFrame end)
 		weldAllTo(cloneAnchor, clone)
 
-		local w   = Instance.new("Weld")
-		w.Part0   = origHandle
-		w.Part1   = cloneAnchor
-		w.C0      = SKIN_OFFSETS[skinName] or CFrame.identity
-		w.C1      = CFrame.identity
-		w.Parent  = cloneAnchor
+		local w = Instance.new("Weld")
+		w.Part0 = origHandle
+		w.Part1 = cloneAnchor
+		w.C0 = SKIN_OFFSETS[skinName] or CFrame.identity
+		w.C1 = CFrame.identity
+		w.Parent = cloneAnchor
+	end
+
+	local function weldAllToPrimary(model)
+		local primary = model.PrimaryPart
+		if not primary then return end
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") and d ~= primary then
+				local wc = Instance.new("WeldConstraint")
+				wc.Part0 = primary
+				wc.Part1 = d
+				wc.Parent = primary
+			end
+		end
+	end
+
+	local function attachCannonReskin(targetRoot, posOffset, heldScale)
+		if not targetRoot or cannonTagged[targetRoot] then return end
+		cannonTagged[targetRoot] = true
+
+		local targetPart = targetRoot:FindFirstChild("Handle")
+		if not (targetPart and targetPart:IsA("BasePart")) then
+			targetPart = firstBasePart(targetRoot)
+		end
+		if not targetPart then cannonTagged[targetRoot] = nil; return end
+
+		local skinName = getCurrentCannonSkinName()
+		if not skinName then cannonTagged[targetRoot] = nil; return end
+		local source = getCannonSkinSource(skinName)
+		if not source then cannonTagged[targetRoot] = nil; return end
+
+		makeInvisible(targetRoot)
+
+		local clone = source:Clone()
+		clone.Name = "LOCAL_CANNON_RESKIN"
+		for _, d in ipairs(clone:GetDescendants()) do
+			if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+				pcall(d.Destroy, d)
+			end
+		end
+
+		if not clone:IsA("Model") then
+			setNoCollide(clone)
+			clone.Parent = targetRoot
+			return
+		end
+
+		if not clone.PrimaryPart then
+			local p = firstBasePart(clone)
+			if p then pcall(function() clone.PrimaryPart = p end) end
+		end
+		if not clone.PrimaryPart then
+			clone:Destroy(); cannonTagged[targetRoot] = nil; return
+		end
+
+		if heldScale and heldScale ~= 1 then
+			pcall(function() clone:ScaleTo(heldScale) end)
+		end
+
+		setNoCollide(clone)
+		clone.Parent = targetRoot
+
+		local offset = posOffset or CFrame.identity
+		pcall(function() clone:PivotTo(targetPart.CFrame * offset) end)
+
+		weldAllToPrimary(clone)
+
+		local wc = Instance.new("WeldConstraint")
+		wc.Part0 = targetPart
+		wc.Part1 = clone.PrimaryPart
+		wc.Parent = clone.PrimaryPart
+	end
+
+	local function hookCannonThirdPerson(character)
+		local function onChildAdded(child)
+			if not (child:IsA("Tool") and child.Name == CANNON_TOOL_NAME) then return end
+			task.wait()
+
+			local handle = child:FindFirstChild("Handle") or firstBasePart(child)
+			if not handle then return end
+
+			local existing = child:FindFirstChild("LOCAL_CANNON_RESKIN")
+			if existing then existing:Destroy(); cannonTagged[child] = nil end
+
+			attachCannonReskin(child, CFrame.identity, CANNON_HAND_SCALE)
+
+			local start = time()
+			local conn
+			conn = RunService.RenderStepped:Connect(function()
+				if not child.Parent then conn:Disconnect(); return end
+				makeInvisible(child)
+				if time() - start > 3 then conn:Disconnect() end
+			end)
+			table.insert(cannonRenderConns, conn)
+		end
+
+		for _, c in ipairs(character:GetChildren()) do onChildAdded(c) end
+		local conn = character.ChildAdded:Connect(onChildAdded)
+		table.insert(cannonConnections, conn)
+	end
+
+	local function hookCannonViewmodel()
+		local cam = workspace.CurrentCamera
+		if not cam then return end
+		local function hookVM(vm)
+			for _, child in ipairs(vm:GetChildren()) do
+				if child.Name == CANNON_TOOL_NAME then
+					attachCannonReskin(child, CFrame.identity, CANNON_HAND_SCALE)
+				end
+			end
+			local conn = vm.ChildAdded:Connect(function(child)
+				if child.Name == CANNON_TOOL_NAME then
+					task.wait()
+					attachCannonReskin(child, CFrame.identity, CANNON_HAND_SCALE)
+				end
+			end)
+			table.insert(cannonConnections, conn)
+		end
+		local vm = cam:FindFirstChild("Viewmodel")
+		if vm then hookVM(vm) end
+		local conn = cam.ChildAdded:Connect(function(child)
+			if child.Name == "Viewmodel" then task.wait(); hookVM(child) end
+		end)
+		table.insert(cannonConnections, conn)
+	end
+
+	local function hookCannonContainer(container)
+		if not container then return end
+		for _, child in ipairs(container:GetChildren()) do
+			if child.Name == CANNON_TOOL_NAME then
+				attachCannonReskin(child, CFrame.identity, CANNON_HAND_SCALE)
+			end
+		end
+		local conn = container.ChildAdded:Connect(function(child)
+			if child.Name == CANNON_TOOL_NAME then
+				task.wait()
+				attachCannonReskin(child, CFrame.identity, CANNON_HAND_SCALE)
+			end
+		end)
+		table.insert(cannonConnections, conn)
+	end
+
+	local function hookCannonBlocksFolder(blocksFolder)
+		for _, child in ipairs(blocksFolder:GetChildren()) do
+			if child.Name == CANNON_TOOL_NAME then
+				attachCannonReskin(child, CANNON_PLACED_OFFSET, 1)
+			end
+		end
+		local conn = blocksFolder.ChildAdded:Connect(function(child)
+			if child.Name == CANNON_TOOL_NAME then
+				task.wait()
+				attachCannonReskin(child, CANNON_PLACED_OFFSET, 1)
+			end
+		end)
+		table.insert(cannonConnections, conn)
+	end
+
+	local function hookAllWorldCannons()
+		local map = workspace:FindFirstChild("Map")
+		if not map then return end
+		local worlds = map:FindFirstChild("Worlds")
+		if not worlds then return end
+		for _, world in ipairs(worlds:GetChildren()) do
+			local blocks = world:FindFirstChild("Blocks")
+			if blocks then hookCannonBlocksFolder(blocks) end
+		end
+		local conn = worlds.ChildAdded:Connect(function(world)
+			task.wait()
+			local blocks = world:FindFirstChild("Blocks")
+			if blocks then hookCannonBlocksFolder(blocks) end
+		end)
+		table.insert(cannonConnections, conn)
+	end
+
+	local function hookCannonSounds()
+		if soundsHooked then return end
+		if not (bedwars and bedwars.CannonHandController) then return end
+		soundsHooked = true
+		oldFireCannon = bedwars.CannonHandController.fireCannon
+		oldLaunchSelf = bedwars.CannonHandController.launchSelf
+
+		local function replaceSound()
+			for _, v in ipairs(workspace.SoundPool:GetChildren()) do
+				if v:IsA("Sound") and v.SoundId == "rbxassetid://7121064180" then v:Destroy() end
+			end
+			local key = CANNON_SOUND_NAMES[CURRENT_SKIN_TYPE] or CANNON_SOUND_NAMES.Nightmare
+			if bedwars.SoundManager and bedwars.SoundList and bedwars.SoundList[key] then
+				bedwars.SoundManager:playSound(bedwars.SoundList[key])
+			end
+		end
+
+		bedwars.CannonHandController.fireCannon = function(...) replaceSound(); return oldFireCannon(...) end
+		bedwars.CannonHandController.launchSelf = function(...) replaceSound(); return oldLaunchSelf(...) end
+	end
+
+	local function unhookCannonSounds()
+		if soundsHooked and bedwars and bedwars.CannonHandController then
+			if oldFireCannon then bedwars.CannonHandController.fireCannon = oldFireCannon end
+			if oldLaunchSelf then bedwars.CannonHandController.launchSelf = oldLaunchSelf end
+		end
+		oldFireCannon = nil; oldLaunchSelf = nil; soundsHooked = false
+	end
+
+	local function cleanupCannons()
+		for _, c in pairs(cannonConnections) do pcall(function() c:Disconnect() end) end
+		for _, c in pairs(cannonRenderConns) do pcall(function() c:Disconnect() end) end
+		table.clear(cannonConnections)
+		table.clear(cannonRenderConns)
+
+		for root in pairs(cannonTagged) do
+			if root and root.Parent then
+				local r = root:FindFirstChild("LOCAL_CANNON_RESKIN")
+				if r then r:Destroy() end
+				restoreVisibility(root)
+			end
+		end
+		table.clear(cannonTagged)
+
+		local map = workspace:FindFirstChild("Map")
+		if map then
+			local worlds = map:FindFirstChild("Worlds")
+			if worlds then
+				for _, world in ipairs(worlds:GetChildren()) do
+					local blocks = world:FindFirstChild("Blocks")
+					if blocks then
+						for _, child in ipairs(blocks:GetChildren()) do
+							if child.Name == CANNON_TOOL_NAME then
+								local r = child:FindFirstChild("LOCAL_CANNON_RESKIN")
+								if r then r:Destroy() end
+								restoreVisibility(child)
+							end
+						end
+					end
+				end
+			end
+		end
+
+		unhookCannonSounds()
 	end
 
 	local function applyKitSkinHook()
 		if not KitSkinCtrl then return end
 		local val = getKitSkinValue()
 		if not val then return end
-		if not oldGetKitSkin then
-			oldGetKitSkin = KitSkinCtrl.getKitSkin
-		end
+		if not oldGetKitSkin then oldGetKitSkin = KitSkinCtrl.getKitSkin end
 		KitSkinCtrl.getKitSkin = function(self, char)
-			if char == LocalPlayer.Character then
-				return val
-			end
+			if char == LocalPlayer.Character then return val end
 			return oldGetKitSkin(self, char)
 		end
 	end
@@ -35933,7 +35691,7 @@ run(function()
 	end
 
 	local function applyStoreSkins()
-		if not bedwars or not bedwars.Store then return end
+		if not (bedwars and bedwars.Store) then return end
 		local skins = getStoreSkins()
 		savedStoreSkins = {}
 		local state = bedwars.Store:getState()
@@ -35941,25 +35699,32 @@ run(function()
 			if pair[1] and pair[2] then
 				local prev = state.Locker and state.Locker.selectedItemSkins and state.Locker.selectedItemSkins[pair[1]]
 				table.insert(savedStoreSkins, { pair[1], prev })
-				pcall(function()
-					bedwars.Store:dispatch({ type = "LockerSetItemSkin", itemType = pair[1], itemSkin = pair[2] })
-				end)
+				pcall(function() bedwars.Store:dispatch({ type = "LockerSetItemSkin", itemType = pair[1], itemSkin = pair[2] }) end)
 			end
 		end
 	end
 
 	local function clearStoreSkins()
-		if not bedwars or not bedwars.Store then return end
+		if not (bedwars and bedwars.Store) then return end
 		for _, saved in ipairs(savedStoreSkins) do
-			pcall(function()
-				bedwars.Store:dispatch({ type = "LockerSetItemSkin", itemType = saved[1], itemSkin = saved[2] })
-			end)
+			pcall(function() bedwars.Store:dispatch({ type = "LockerSetItemSkin", itemType = saved[1], itemSkin = saved[2] }) end)
 		end
 		savedStoreSkins = {}
 	end
 
 	local function tryApply(child)
-		local skinName = getCurrentMappings()[child.Name:lower()]
+		if isCannonSkin() then return end
+		local mappings = getCurrentMappings()
+
+		local skinName = mappings[child.Name:lower()]
+
+		if not skinName then
+			local childNorm = normalizeName(child.Name)
+			for k, v in pairs(mappings) do
+				if normalizeName(k) == childNorm then skinName = v; break end
+			end
+		end
+
 		if not skinName then return end
 		task.wait()
 		if child.Parent then attachReskin(child, skinName) end
@@ -35988,14 +35753,19 @@ run(function()
 	local function onCharacterAdded(character)
 		task.wait(0.2)
 		applyKitSkinHook()
-		hookContainer(LocalPlayer.Backpack)
-		hookContainer(character)
+		if isCannonSkin() then
+			hookCannonContainer(LocalPlayer.Backpack)
+			hookCannonContainer(character)
+			hookCannonThirdPerson(character)
+		else
+			hookContainer(LocalPlayer.Backpack)
+			hookContainer(character)
+		end
 	end
 
 	local function cleanup()
 		for _, c in pairs(connections) do pcall(function() c:Disconnect() end) end
 		table.clear(connections)
-
 		for root in pairs(tagged) do
 			if root and root.Parent then
 				local r = root:FindFirstChild("LOCAL_ITEM_RESKIN")
@@ -36004,195 +35774,75 @@ run(function()
 			end
 		end
 		table.clear(tagged)
-
 		removeKitSkinHook()
 		clearStoreSkins()
+		cleanupCannons()
 	end
 
 	local skinNames = {}
 	for name in pairs(SKIN_DATA) do table.insert(skinNames, name) end
+	for name in pairs(CANNON_SKIN_NAMES) do table.insert(skinNames, name) end
 	table.sort(skinNames)
+
+	local SkinTypeDropdown
 
 	SkinChanger = vape.Categories.Render:CreateModule({
 		Name = "SkinChanger",
 		Function = function(enabled)
 			if enabled then
-				hookViewmodel()
-				applyKitSkinHook()
-				applyStoreSkins()
-				if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
+				if isCannonSkin() then
+					hookCannonViewmodel()
+					hookAllWorldCannons()
+					hookCannonSounds()
+					applyKitSkinHook()
+					if LocalPlayer.Character then
+						hookCannonContainer(LocalPlayer.Backpack)
+						hookCannonContainer(LocalPlayer.Character)
+						hookCannonThirdPerson(LocalPlayer.Character)
+					end
+				else
+					hookViewmodel()
+					applyKitSkinHook()
+					applyStoreSkins()
+					if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
+				end
 				table.insert(connections, LocalPlayer.CharacterAdded:Connect(onCharacterAdded))
 			else
 				cleanup()
 			end
 		end,
-		Tooltip = "Client-sided item skin changer"
+		Tooltip = "Client-sided item skin changer",
 	})
 
 	SkinChanger:CreateDropdown({
-		Name     = "Item Skin",
-		List     = skinNames,
-		Default  = CURRENT_ITEM_SKIN,
+		Name = "Item Skin",
+		List = skinNames,
+		Default = CURRENT_ITEM_SKIN,
 		Function = function(val)
 			CURRENT_ITEM_SKIN = val
+			if SkinTypeDropdown and SkinTypeDropdown.Object then
+				SkinTypeDropdown.Object.Visible = TIERED_SKINS[val] == true
+			end
 			if SkinChanger.Enabled then SkinChanger:Toggle(); SkinChanger:Toggle() end
-		end
+		end,
 	})
 
-	SkinChanger:CreateDropdown({
-		Name     = "Skin Type",
-		List     = { "Gold", "Platinum", "Diamond", "Emerald", "Nightmare", "Default" },
-		Default  = CURRENT_SKIN_TYPE,
+	SkinTypeDropdown = SkinChanger:CreateDropdown({
+		Name = "Skin Type",
+		List = { "Gold", "Platinum", "Diamond", "Emerald", "Nightmare", "Default" },
+		Default = CURRENT_SKIN_TYPE,
 		Function = function(val)
 			CURRENT_SKIN_TYPE = val
 			if SkinChanger.Enabled then SkinChanger:Toggle(); SkinChanger:Toggle() end
-		end
-	})
-end)
-
-run(function()
-	local ElektraExtender
-	local RS = game.ReplicatedStorage
-	local EXTRA_BLOCKS = 2
-	local savedDepth    = nil
-	local savedCooldown = nil
-	local savedDuration = nil
-	local BF = nil
-	local heartbeat = nil
-
-	local function getBF()
-		if BF then return BF end
-		pcall(function()
-			BF = require(RS.TS.balance["balance-file"]).BalanceFile
-		end)
-		return BF
-	end
-
-	local function getCtrl()
-		local c = nil
-		pcall(function()
-			c = require(RS.rbxts_include.node_modules["@easy-games"].knit.src)
-				.KnitClient.Controllers.ElektraController
-		end)
-		return c
-	end
-
-	local function apply()
-		local bf = getBF()
-		if bf and bf.ELEKTRA then
-			if not savedDepth then
-				savedDepth    = bf.ELEKTRA.ELECTRIC_DASH_DEPTH_GOAL
-				savedCooldown = bf.ELEKTRA.ELECTRIC_DASH_COOLDOWN
-				savedDuration = bf.ELEKTRA.ELECTRIC_DASH_DURATION
-			end
-			bf.ELEKTRA.ELECTRIC_DASH_DEPTH_GOAL = savedDepth + (EXTRA_BLOCKS * 4) -- shhhh
-			bf.ELEKTRA.ELECTRIC_DASH_COOLDOWN   = 0
-			bf.ELEKTRA.ELECTRIC_DASH_DURATION   = 0
-		end
-
-		heartbeat = game:GetService("RunService").Heartbeat:Connect(function()
-			local c = getCtrl()
-			if c then
-				c.dashReadyTime = -1
-				c.lastDash      = -math.huge
-			end
-		end)
-	end
-
-	local function revert()
-		if heartbeat then
-			heartbeat:Disconnect()
-			heartbeat = nil
-		end
-		local bf = getBF()
-		if bf and bf.ELEKTRA and savedDepth then
-			bf.ELEKTRA.ELECTRIC_DASH_DEPTH_GOAL = savedDepth
-			bf.ELEKTRA.ELECTRIC_DASH_COOLDOWN   = savedCooldown
-			bf.ELEKTRA.ELECTRIC_DASH_DURATION   = savedDuration
-		end
-		savedDepth    = nil
-		savedCooldown = nil
-		savedDuration = nil
-	end
-
-	ElektraExtender = vape.Categories.Kits:CreateModule({
-		Name     = "ElektraExtender",
-		Function = function(enabled)
-			if enabled then apply() else revert() end
 		end,
-		Tooltip  = "Extends Elektra dash + removes client cooldown"
 	})
 
-	ElektraExtender:CreateSlider({
-		Name     = "Extra Blocks",
-		Min      = 1,
-		Max      = 3,
-		Default  = 2,
-		Decimal  = 1,
-		Function = function(val)
-			EXTRA_BLOCKS = math.floor(val)
-			if ElektraExtender.Enabled then
-				local bf = getBF()
-				if bf and bf.ELEKTRA and savedDepth then
-					bf.ELEKTRA.ELECTRIC_DASH_DEPTH_GOAL = savedDepth + (EXTRA_BLOCKS * 4)
-				end
-			end
+	task.defer(function()
+		if SkinTypeDropdown and SkinTypeDropdown.Object then
+			SkinTypeDropdown.Object.Visible = TIERED_SKINS[CURRENT_ITEM_SKIN] == true
 		end
-	})
-end)
-
-run(function()
-	local RS = game.ReplicatedStorage
-	local oldIsOnCooldown = nil
-	local CooldownCtrl = nil
-	local CooldownId = nil
-
-	local function getCooldownId()
-		if CooldownId then return CooldownId end
-		pcall(function()
-			CooldownId = require(RS.TS.cooldown["cooldown-id"]).CooldownId
-		end)
-		return CooldownId
-	end
-
-	local function getCooldownCtrl()
-		if CooldownCtrl then return CooldownCtrl end
-		pcall(function()
-			local Flamework = require(RS.rbxts_include.node_modules["@flamework"].core.out).Flamework
-			CooldownCtrl = Flamework.resolveDependency(
-				"@easy-games/game-core:client/controllers/cooldown/cooldown-controller@CooldownController" 
-			)
-		end)
-		return CooldownCtrl
-	end
-
-	local function apply()
-		local ctrl = getCooldownCtrl()
-		local cd   = getCooldownId()
-		if not ctrl or not cd then return end
-
-		oldIsOnCooldown = ctrl.isOnCooldown --lmaooo
-		ctrl.isOnCooldown = function(self, id)
-			if id == cd.VOID_AXE then
-				return false
-			end
-			return oldIsOnCooldown(self, id)
+		if SkinTypeDropdown and SkinTypeDropdown.Set then
+			SkinTypeDropdown:Set(CURRENT_SKIN_TYPE)
 		end
-	end
-
-	local function revert()
-		local ctrl = getCooldownCtrl()
-		if ctrl and oldIsOnCooldown then
-			ctrl.isOnCooldown = oldIsOnCooldown
-			oldIsOnCooldown = nil
-		end
-	end
-
-	vape.Categories.Kits:CreateModule({
-		Name     = "InfiniteRegent",
-		Function = function(enabled)
-			if enabled then apply() else revert() end
-		end,
-		Tooltip  = "Removes Void Regent axe cooldown"
-	})
+	end)
 end)
