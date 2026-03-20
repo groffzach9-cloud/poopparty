@@ -1,5 +1,6 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local loadstring = function(...)
 	local res, err = loadstring(...)
 	if err and vape then
@@ -7529,23 +7530,53 @@ run(function()
 				end
 			end
 	
-			clone.Humanoid:ApplyDescriptionClientServer(desc)
+			local savedAnims = {}
+			local animate = char.Character:FindFirstChild('Animate')
+			if animate then
+				for _, v in animate:GetChildren() do
+					local anim = v:FindFirstChildWhichIsA('Animation')
+					if anim then
+						savedAnims[v.Name] = anim.AnimationId
+					end
+				end
+			end
+
+			 clone.Humanoid:ApplyDescriptionClientServer(desc)
+
+			task.wait(0.5)
+			local cloneAnimate = clone:FindFirstChild('Animate')
+			local myAnimate = char.Character:FindFirstChild('Animate')
+			if cloneAnimate and myAnimate then
+				for _, slot in cloneAnimate:GetChildren() do
+					local mySlot = myAnimate:FindFirstChild(slot.Name)
+					if mySlot then
+						local targetAnim = slot:FindFirstChildWhichIsA('Animation')
+						local myAnim = mySlot:FindFirstChildWhichIsA('Animation')
+						if targetAnim and myAnim then
+							pcall(function() myAnim.AnimationId = targetAnim.AnimationId end)
+						end
+					end
+				end
+			end
+
+
+			if animate then
+				for name, id in savedAnims do
+					local slot = animate:FindFirstChild(name)
+					if slot then
+						local anim = slot:FindFirstChildWhichIsA('Animation')
+						if anim then
+							anim.AnimationId = id
+						end
+					end
+				end
+			end
+
 			for _, v in char.Character:GetChildren() do
 				itemAdded(v)
 			end
 			Disguise:Clean(char.Character.ChildAdded:Connect(itemAdded))
-	
-			for _, v in clone:WaitForChild('Animate'):GetChildren() do
-				if not char.Character:FindFirstChild('Animate') then return end
-				local real = char.Character.Animate:FindFirstChild(v.Name)
-				if v and real then
-					local anim = v:FindFirstChildWhichIsA('Animation') or {AnimationId = ''}
-					local realanim = real:FindFirstChildWhichIsA('Animation') or {AnimationId = ''}
-					if realanim then
-						realanim.AnimationId = anim.AnimationId
-					end
-				end
-			end
+
 	
 			for _, v in clone:GetChildren() do
 				v:SetAttribute('Disguise', true)
@@ -7569,8 +7600,8 @@ run(function()
 				itemAdded(localface, true)
 				cloneface.Parent = char.Head
 			end
-			originalDesc:SetEmotes(desc:GetEmotes())
-			originalDesc:SetEquippedEmotes(desc:GetEquippedEmotes())
+			pcall(function() originalDesc:SetEmotes(desc:GetEmotes()) end)
+			pcall(function() originalDesc:SetEquippedEmotes(desc:GetEquippedEmotes()) end)
 			clone:ClearAllChildren()
 			clone:Destroy()
 			clone = nil
@@ -7596,7 +7627,7 @@ run(function()
 			if data.BundleType == 'AvatarAnimations' then
 				local animate = char.Character:FindFirstChild('Animate')
 				if not animate then return end
-				for _, v in desc.Items do
+				for _, v in (desc.Items or {}) do
 					local animtype = v.Name:split(' ')[2]:lower()
 					if animtype ~= 'animation' then
 						local suc, res = pcall(function() return game:GetObjects('rbxassetid://'..v.Id) end)
@@ -7611,7 +7642,7 @@ run(function()
 		end
 	end
 	
-	Disguise = vape.Legit:CreateModule({
+	Disguise = vape.Categories.Legit:CreateModule({
 		Name = 'Disguise',
 		Function = function(callback)
 			if callback then
@@ -7621,7 +7652,7 @@ run(function()
 				end
 			end
 		end,
-		Tooltip = 'Changes your character or animation to a specific ID (animation packs or userid\'s only)'
+		Tooltip = 'Changes your character or animation to a specific ID (aniamtions only work if they are in the same server as u)'
 	})
 	Mode = Disguise:CreateDropdown({
 		Name = 'Mode',
