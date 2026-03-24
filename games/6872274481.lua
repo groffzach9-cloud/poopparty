@@ -1954,8 +1954,15 @@ run(function()
 
 					if not ent then
 						if KillauraTarget and KillauraTarget.Enabled and store.KillauraTarget then
-							ent = store.KillauraTarget
-						else
+							local ka = store.KillauraTarget
+							local validType = (ka.Player and Targets.Players.Enabled) or (ka.NPC and Targets.NPCs.Enabled)
+							local dist = ka.RootPart and (ka.RootPart.Position - entitylib.character.RootPart.Position).Magnitude
+							local validDist = dist and dist <= Distance.Value
+							if validType and validDist then
+								ent = ka
+							end
+						end
+						if not ent then
 							ent = entitylib.EntityPosition({
 								Range = Distance.Value,
 								Part = 'RootPart',
