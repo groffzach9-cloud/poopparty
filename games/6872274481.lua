@@ -5799,6 +5799,9 @@ run(function()
                                             local inLegitRange = delta.Magnitude < 14.4
                                             local allowSwingAnim = not Swing.Enabled and AnimDelay <= tick() and (not LegitAura.Enabled or (inLegitRange and (tick() - swingCooldown) >= math.max(SwingTime.Enabled and SwingTimeSlider.Value or 0.25, 0.11)))
                                             if allowSwingAnim then
+												if LegitAura.Enabled then
+													continue
+												end
                                                 local swingSpeed = 0.25
                                                 if SwingTime.Enabled then
                                                     swingSpeed = math.max(SwingTimeSlider.Value, 0.11)
@@ -5902,6 +5905,9 @@ run(function()
                                 Attacking = true
                                 if not isClaw then
                                     if not Swing.Enabled and AnimDelay <= tick() and not LegitAura.Enabled then
+										if LegitAura.Enabled then
+											continue
+										end
                                         local swingSpeed = 0.25
                                         if SwingTime.Enabled then
                                             swingSpeed = math.max(SwingTimeSlider.Value, 0.11)
