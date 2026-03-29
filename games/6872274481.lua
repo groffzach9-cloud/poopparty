@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -5250,6 +5249,7 @@ run(function()
     local FASTHITS_HIT_DEBOUNCE = 0.3
     local FastHitsHitsRequiredToggle
     local FastHitsHitsRequiredSlider
+    local FastHitsRate
     local NEWFastHitsLastShot = 0
     local NEWFastHitsUsage = 1
     local NEWFastHitsProjectileDelay = {}
@@ -5682,14 +5682,14 @@ run(function()
             bedwars.ProjectileController:createLocalProjectile(meta, ammo, projectile, shootPosition, id, dir * projSpeed, launchData)
             local res = projectileRemote:InvokeServer(item.tool, ammo, projectile, shootPosition, pos, dir * projSpeed, id, launchData, workspace:GetServerTimeNow() - 0.045)
             if not res then
-                NEWFastHitsProjectileDelay[item.itemType] = tick()
+                NEWFastHitsProjectileDelay[item.itemType] = tick() + (FastHitsRate and FastHitsRate:GetRandomValue() or 0.15)
             else
                 local shoot = itemMeta.launchSound
                 shoot = shoot and shoot[math.random(1, #shoot)] or nil
                 if shoot then bedwars.SoundManager:playSound(shoot) end
             end
         end)
-        NEWFastHitsProjectileDelay[item.itemType] = tick() + itemMeta.fireDelaySec
+        NEWFastHitsProjectileDelay[item.itemType] = tick() + itemMeta.fireDelaySec + (FastHitsRate and FastHitsRate:GetRandomValue() or 0)
         if switched then task.wait(0.05) end
     end
 
@@ -6822,6 +6822,7 @@ run(function()
             if AutoShootWaitDelay then AutoShootWaitDelay.Object.Visible = callback and isOG end
             if FirstPersonCheck then FirstPersonCheck.Object.Visible = callback and isOG end
             if ProjectileTypeFastHits then ProjectileTypeFastHits.Object.Visible = callback and isOG end
+            if FastHitsRate then FastHitsRate.Object.Visible = callback and not isOG end
             if FastHitsHitsRequiredToggle then FastHitsHitsRequiredToggle.Object.Visible = callback end
             if FastHitsHitsRequiredSlider then FastHitsHitsRequiredSlider.Object.Visible = callback and FastHitsHitsRequiredToggle and FastHitsHitsRequiredToggle.Enabled end
             if callback and Killaura.Enabled then
@@ -6845,7 +6846,19 @@ run(function()
             if AutoShootWaitDelay then AutoShootWaitDelay.Object.Visible = isOG end
             if FirstPersonCheck then FirstPersonCheck.Object.Visible = isOG end
             if ProjectileTypeFastHits then ProjectileTypeFastHits.Object.Visible = isOG end
+            if FastHitsRate then FastHitsRate.Object.Visible = not isOG end
         end
+    })
+
+    FastHitsRate = Killaura:CreateTwoSlider({
+        Name = 'Fire Rate',
+        Min = 0,
+        Max = 1,
+        DefaultMin = 0.05,
+        DefaultMax = 0.12,
+        Decimal = 100,
+        Tooltip = 'Random delay added on top of the weapon\'s base fire delay (lower = faster)',
+        Visible = false
     })
 
     AutoShootInterval = Killaura:CreateSlider({
