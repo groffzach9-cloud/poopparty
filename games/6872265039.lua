@@ -4,6 +4,8 @@ local cloneref = cloneref or function(obj) return obj end
 local playersService = cloneref(game:GetService('Players'))
 local replicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
 local inputService = cloneref(game:GetService('UserInputService'))
+local tweenService = cloneref(game:GetService('TweenService'))
+local runService = cloneref(game:GetService('RunService')) 
 
 local lplr = playersService.LocalPlayer
 local vape = shared.vape
