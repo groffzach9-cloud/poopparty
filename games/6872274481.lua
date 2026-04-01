@@ -5262,7 +5262,6 @@ run(function()
     local cachedHasArrows = false
     local lastInventoryUpdate = 0
     local INVENTORY_CACHE_TIME = 0.5
-    local ProjectileTypeFastHits
     local FastHitsMode
     local projectileRemote = {InvokeServer = function() end}
     local FastHitsFireDelays = {}
@@ -5318,10 +5317,12 @@ run(function()
         if not CustomHitRegSlider then return true end
         local currentTime = tick()
         local targetHitsPerSec = CustomHitRegSlider.Value
-        if targetHitsPerSec >= 35 then return true end
         local delayBetweenHits = 1 / targetHitsPerSec
         if currentTime - lastCustomHitTime >= delayBetweenHits then
-            lastCustomHitTime = currentTime
+            lastCustomHitTime = lastCustomHitTime + delayBetweenHits
+            if currentTime - lastCustomHitTime > delayBetweenHits then
+                lastCustomHitTime = currentTime
+            end
             return true
         end
         return false
@@ -5344,23 +5345,19 @@ run(function()
 
         if actualDistance > 14.4 and actualDistance <= 30 then
             local direction = (targetpos - selfpos).Unit
-            
-            local moveDistance = math.min(actualDistance - 14.3, 8) 
-            attackTable.validate.selfPosition.value = selfpos + (direction * moveDistance)
-            
+            local moveDistance = math.min(actualDistance - 14.3, 8)
             local pullDistance = math.min(actualDistance - 14.3, 4)
-            attackTable.validate.targetPosition.value = targetpos - (direction * pullDistance)
-            
-            attackTable.validate.raycast = attackTable.validate.raycast or {}
-            attackTable.validate.raycast.cameraPosition = attackTable.validate.raycast.cameraPosition or {}
-            attackTable.validate.raycast.cursorDirection = attackTable.validate.raycast.cursorDirection or {}
-            
-            local extendedOrigin = selfpos + (direction * math.min(actualDistance - 12, 15))
-            attackTable.validate.raycast.cameraPosition.value = extendedOrigin
-            attackTable.validate.raycast.cursorDirection.value = direction
-            
-            attackTable.validate.targetPosition = attackTable.validate.targetPosition or {value = targetpos}
-            attackTable.validate.selfPosition = attackTable.validate.selfPosition or {value = selfpos}
+            local newSelf = selfpos + (direction * moveDistance)
+            local newTarget = targetpos - (direction * pullDistance)
+            local finalDist = (newSelf - newTarget).Magnitude
+            if finalDist <= 14.4 then
+                attackTable.validate.selfPosition.value = newSelf
+                attackTable.validate.targetPosition.value = newTarget
+                local extendedOrigin = selfpos + (direction * math.min(actualDistance - 12, 15))
+                attackTable.validate.raycast = attackTable.validate.raycast or {}
+                attackTable.validate.raycast.cameraPosition = {value = extendedOrigin}
+                attackTable.validate.raycast.cursorDirection = {value = direction}
+            end
         end
 
         if suc and plr then
@@ -5449,7 +5446,7 @@ run(function()
         if bedwars.SwordController then
             bedwars.SwordController.lastAttack = 0
             bedwars.SwordController.lastSwing = 0
-            
+
             if bedwars.SwordController.lastChargedAttackTimeMap then
                 for weaponName, _ in pairs(bedwars.SwordController.lastChargedAttackTimeMap) do
                     bedwars.SwordController.lastChargedAttackTimeMap[weaponName] = 0
@@ -5688,6 +5685,7 @@ run(function()
         local switched = switchItem(item.tool)
         targetinfo.Targets[ent] = tick() + 1
         task.spawn(function()
+            if not ent or not ent.RootPart then return end
             local dir, id = CFrame.lookAt(shootPosition, calc).LookVector, httpService:GenerateGUID(true)
             local holdingCrossbow = item.itemType:find('crossbow')
             local holdingBow = item.itemType:find('bow') and not holdingCrossbow
@@ -5763,12 +5761,7 @@ run(function()
         local meta = bowMeta
         local projSpeed, gravity = meta.launchVelocity, meta.gravitationalAcceleration or 196.2
 
-        local calc = nil
-        if ProjectileTypeFastHits.Value == 'Vape' then
-            calc = prediction.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheckFastHits)
-        else
-            calc = aerov4bad.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheckFastHits, ent.Player, ent.RootPart)
-        end
+        local calc = prediction.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheckFastHits)
 
         if calc then
             targetinfo.Targets[ent] = tick() + 1
@@ -5847,12 +5840,7 @@ run(function()
 
                             local meta = bedwars.ProjectileMeta[projectile]
                             local projSpeed, gravity = meta.launchVelocity, meta.gravitationalAcceleration or 196.2
-                            local calc = nil
-                            if ProjectileTypeFastHits.Value == 'Vape' then
-                                calc = prediction.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new())
-                            else
-                                calc = aerov4bad.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new(), ent.Player, ent.RootPart)
-                            end
+                            local calc = prediction.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new())
 
                             if calc then
                                 local dir = CFrame.lookAt(pos, calc).LookVector
@@ -6270,13 +6258,14 @@ run(function()
                                                     swingSpeed = meta.sword.attackSpeed
                                                 end
                                                 AnimDelay = tick() + swingSpeed
-                                                bedwars.SwordController:playSwordEffect(meta, false)
-                                                if meta.displayName:find(' Scythe') then
-                                                    bedwars.ScytheController:playLocalAnimation()
-                                                end
-
-                                                if vape.ThreadFix then
-                                                    setthreadidentity(8)
+                                                pcall(function()
+                                                    bedwars.SwordController:playSwordEffect(meta, false)
+                                                    if meta.displayName:find(' Scythe') then
+                                                        bedwars.ScytheController:playLocalAnimation()
+                                                    end
+                                                end)
+                                                if vape.ThreadFix and setthreadidentity then
+                                                    pcall(setthreadidentity, 8)
                                                 end
                                             end
                                         end
@@ -6291,8 +6280,8 @@ run(function()
                                         local humanoid = v.Character:FindFirstChildOfClass("Humanoid")
                                         if humanoid then
                                             local state = humanoid:GetState()
-                                            if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
-                                                if math.random(0, 100) > AirHitsChance.Value then
+                                            if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Physics then
+                                                if math.random(1, 100) > AirHitsChance.Value then
                                                     continue
                                                 end
                                             end
@@ -6302,7 +6291,7 @@ run(function()
                                     if SyncHits.Enabled then
                                         local swingSpeed = SwingTime.Enabled and SwingTimeSlider.Value or (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.42)
                                         local timeSinceLastSwing = tick() - swingCooldown
-                                        local requiredDelay = math.max(swingSpeed * 0.5, 0.05)
+                                        local requiredDelay = math.max(swingSpeed * 0.4, 0.03)
                                         
                                         if timeSinceLastSwing < requiredDelay then 
                                             continue 
@@ -6373,13 +6362,14 @@ run(function()
                                             swingSpeed = meta.sword.attackSpeed
                                         end
                                         AnimDelay = tick() + swingSpeed
-                                        bedwars.SwordController:playSwordEffect(meta, false)
-                                        if meta.displayName:find(' Scythe') then
-                                            bedwars.ScytheController:playLocalAnimation()
-                                        end
-
-                                        if vape.ThreadFix then
-                                            setthreadidentity(8)
+                                        pcall(function()
+                                            bedwars.SwordController:playSwordEffect(meta, false)
+                                            if meta.displayName:find(' Scythe') then
+                                                bedwars.ScytheController:playLocalAnimation()
+                                            end
+                                        end)
+                                        if vape.ThreadFix and setthreadidentity then
+                                            pcall(setthreadidentity, 8)
                                         end
                                     end
                                 end
@@ -6471,14 +6461,6 @@ run(function()
         List = {'Players First', 'NPCs First', 'Distance'},
         Default = 'Players First',
         Tooltip = 'Choose which targets to prioritize'
-    })
-
-    ProjectileTypeFastHits = Killaura:CreateDropdown({
-        Name = "Projectile Type",
-        List = {'Vape','Aero'},
-        Default = 'Aero',
-        Tooltip = 'Vape = Built in predictions\nAero = Custom made predictions',
-        Visible = false
     })
     
     local methods = {'Damage', 'Distance'}
@@ -6846,7 +6828,7 @@ run(function()
             if AutoShootSwitchSpeed then AutoShootSwitchSpeed.Object.Visible = callback and isOG end
             if AutoShootWaitDelay then AutoShootWaitDelay.Object.Visible = callback and isOG end
             if FirstPersonCheck then FirstPersonCheck.Object.Visible = callback and isOG end
-            if ProjectileTypeFastHits then ProjectileTypeFastHits.Object.Visible = callback and isOG end
+            if ProjectileTypeFastHits then ProjectileTypeFastHits.Object.Visible = isOG end
             if FastHitsRate then FastHitsRate.Object.Visible = callback and not isOG end
             if FastHitsHitsRequiredToggle then FastHitsHitsRequiredToggle.Object.Visible = callback end
             if FastHitsHitsRequiredSlider then FastHitsHitsRequiredSlider.Object.Visible = callback and FastHitsHitsRequiredToggle and FastHitsHitsRequiredToggle.Enabled end
@@ -6862,7 +6844,7 @@ run(function()
         Name = 'Fast Hits Mode',
         List = {'OGFastHits', 'NEWFastHits'},
         Default = 'OGFastHits',
-        Tooltip = 'OGFastHits = simulates mouse click\nNEWFastHits = fires via inventory (catvape style)',
+        Tooltip = 'OGFastHits = leftclick() \nNEWFastHits = fires via inventory',
         Visible = false,
         Function = function(val)
             local isOG = val == 'OGFastHits'
@@ -8041,10 +8023,10 @@ run(function()
 					old = bedwars.ProjectileController.calculateImportantLaunchValues
 					bedwars.ProjectileController.calculateImportantLaunchValues = function(...)
 					local self, projmeta, worldmeta, origin, shootpos = ...
-					local originPos = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero
+					local originPos = entitylib.isAlive and (shootpos or (entitylib.character and entitylib.character.RootPart and entitylib.character.RootPart.Position)) or Vector3.zero
 					if not wasHovering then lockedRandomPart = nil end
 					wasHovering = true
-					local entityPart = (TargetPart.Value == 'Closest' or TargetPart.Value == 'Randomize') and 'RootPart' or TargetPart.Value
+					local entityPart = (TargetPart.Value == 'Head') and 'Head' or 'RootPart'
 					local plr = entitylib.EntityMouse({
 						Part = entityPart,
 						Range = FOV.Value,
@@ -8053,12 +8035,11 @@ run(function()
 						Wallcheck = Targets.Walls.Enabled,
 						Origin = originPos
 					})
-					if plr and not plr.Targetable then plr = nil end
-					if plr and (plr.RootPart.Position - originPos).Magnitude > Range.Value then plr = nil end
 
 					if not plr then
 						wasHovering = false
-						return old(...)
+						local s, r = pcall(old, ...)
+						return s and r or nil
 					end
 
 					if not shouldPAWork() then
@@ -8204,6 +8185,7 @@ run(function()
 
 	Targets = ProjectileAimbot:CreateTargets({
 		Players = true,
+		NPCs = true,
 		Walls = true
 	})
 
@@ -22541,7 +22523,7 @@ run(function()
 						return old(...)
 					end
 					
-					local originPos = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero
+					local originPos = entitylib.isAlive and (shootpos or (entitylib.character and entitylib.character.RootPart and entitylib.character.RootPart.Position)) or Vector3.zero
 					local target = nil
 					local targetPos = nil
 					
