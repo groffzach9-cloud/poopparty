@@ -78,9 +78,16 @@ if not shared.VapeDeveloper then
 	local _, subbed = pcall(function()
 		return game:HttpGet('https://github.com/poopparty/poopparty')
 	end)
-	local commit = subbed:find('currentOid')
-	commit = commit and subbed:sub(commit + 13, commit + 52) or nil
-	commit = commit and #commit == 40 and commit or 'main'
+	local commit = 'main'
+	local ok, res = pcall(function()
+		return game:HttpGet('https://api.github.com/repos/poopparty/poopparty/commits/main', true)
+	end)
+	if ok and res then
+		local h = res:match('"sha":"([a-f0-9]+)"')
+		if h and #h == 40 then
+			commit = h
+		end
+	end
 	if commit == 'main' or (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
 		wipeFolder('newvape')
 		wipeFolder('newvape/games')
