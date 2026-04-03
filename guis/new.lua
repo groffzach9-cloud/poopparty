@@ -6942,9 +6942,11 @@ function mainapi:Load(skipgui, profile)
 			if v.Pinned and not object.Pinned then
 				local pinButton = object.Object:FindFirstChild('Pin')
 				if pinButton then
-					for _, connection in getconnections(pinButton.MouseButton1Click) do
-						connection:Fire()
-					end
+					pcall(function()
+						for _, connection in getconnections(pinButton.MouseButton1Click) do
+							connection:Fire()
+						end
+					end)
 				end
 			end
 		end
@@ -7072,7 +7074,7 @@ end
 
 function mainapi:Save(newprofile)
     if mainapi.ThreadFix then setthreadidentity(8) end
-    if self.Loaded == nil then return end
+    if not self.Loaded then return end
 	local guidata = {
 		Categories = {},
 		Profile = newprofile or self.Profile,
