@@ -14472,7 +14472,6 @@ run(function()
 	local LootBankDelay
 	local LootBankTeamFilter
 	local LootDelays = {}
-	local InfBank
 
 	local function addItem(itemType, shop)
 		local item = Instance.new('ImageLabel')
@@ -14529,30 +14528,6 @@ run(function()
 		return chestTeam ~= myTeam
 	end
 
-	local function getChestTeam(chestPart)
-		local beds = collectionService:GetTagged('bed')
-		local closestTeam = nil
-		local closestDist = math.huge
-		for _, bed in ipairs(beds) do
-			if bed.Parent then
-				local dist = (bed.Position - chestPart.Position).Magnitude
-				if dist < closestDist then
-					closestDist = dist
-					closestTeam = bed:GetAttribute('TeamID')
-				end
-			end
-		end
-		return closestTeam
-	end
-
-	local function isMyChest(chestPart)
-		local myTeam = lplr:GetAttribute('Team')
-		if not myTeam then return false end
-		local chestTeam = getChestTeam(chestPart)
-		if not chestTeam then return false end
-		return chestTeam == myTeam
-	end
-
 	local function handleState()
 		local currentTime = tick()
 
@@ -14563,7 +14538,7 @@ run(function()
 
 		if not cachedChest then return end
 
-		if not nearChest() and not GUICheck.Enabled and not (InfBank and InfBank.Enabled) then
+		if not nearChest() and not GUICheck.Enabled then
 			return
 		end
 
@@ -14575,12 +14550,10 @@ run(function()
 			end
 		end
 
-	if #itemsToDeposit > 0 then
-		for _, v in ipairs(itemsToDeposit) do
-			if v.tool then  
+		if #itemsToDeposit > 0 then
+			for _, v in ipairs(itemsToDeposit) do
 				bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(cachedChest, v.tool)
 			end
-		end
 			task.defer(function()
 				if cachedChest and cachedChest.Parent then
 					refreshBank(cachedChest)
@@ -14694,7 +14667,7 @@ run(function()
 						shouldBank = nearChest()
 					end
 
-					if shouldBank or (InfBank and InfBank.Enabled) then
+					if shouldBank then
 						handleState()
 					end
 
@@ -14768,27 +14741,12 @@ run(function()
 		Visible = false
 	})
 
-    LootBankTeamFilter = AutoBank:CreateToggle({
-        Name = 'Skip Team Chests',
-        Tooltip = 'never rob ur own team fr',
-        Default = true,
-        Visible = false
-    })
-
-    InfBank = AutoBank:CreateToggle({
-        Name = 'Inf Range Bank',
-        Default = false,
-        Tooltip = 'Banks from anywhere — void to retrieve your loot'
-    })
-
-    task.defer(function()
-        if LootBankDelay and LootBankDelay.Object then
-            LootBankDelay.Object.Visible = false
-        end
-        if LootBankTeamFilter and LootBankTeamFilter.Object then
-            LootBankTeamFilter.Object.Visible = false
-        end
-    end)
+	LootBankTeamFilter = AutoBank:CreateToggle({
+		Name = 'Skip Team Chests',
+		Tooltip = 'never rob ur own team fr',
+		Default = true,
+		Visible = false
+	})
 end)
 	
 run(function()
