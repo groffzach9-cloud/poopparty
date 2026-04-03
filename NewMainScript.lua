@@ -92,9 +92,17 @@ if not shared.VapeDeveloper then
 		wipeFolder('newvape')
 		wipeFolder('newvape/games')
 		wipeFolder('newvape/guis')
+		pcall(function() if isfile('newvape/guis/new.lua') then delfile('newvape/guis/new.lua') end end)
 		wipeFolder('newvape/libraries')
+		if isfolder('newvape/profiles/premade') then
+			for _, file in listfiles('newvape/profiles/premade') do
+				pcall(function()
+					if isfile(file) then delfile(file) end
+				end)
+			end
+		end
 	end
-	downloadPremadeProfiles(commit)
+	pcall(downloadPremadeProfiles, commit)
 	writefile('newvape/profiles/commit.txt', commit)
 end
 
