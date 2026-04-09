@@ -36250,7 +36250,7 @@ run(function()
 							else
 								blockCount = lplr:GetAttribute('BlockKickerKit_BlockCount') or 0
 							end
-							if AutoStompBlocks and blockCount <= AutoStompBlocks.Value and bedwars.AbilityController:canUseAbility('BLOCK_STOMP') then
+							if store.equippedKit == 'block_kicker' and AutoStompBlocks and blockCount <= AutoStompBlocks.Value and bedwars.AbilityController:canUseAbility('BLOCK_STOMP') then
 								bedwars.AbilityController:useAbility('BLOCK_STOMP')
 								task.wait(0.8)
 							end
@@ -36338,7 +36338,7 @@ run(function()
 								bc = lplr:GetAttribute('BlockKickerKit_BlockCount') or 0
 							end
 							
-							if bc >= 1 and bedwars.AbilityController:canUseAbility('BLOCK_KICK') then
+							if store.equippedKit == 'block_kicker' and bc >= 1 and bedwars.AbilityController:canUseAbility('BLOCK_KICK') then
 								local origin = entitylib.character.RootPart.Position
 								local targetPos = ent.RootPart.Position + Vector3.new(0, 1.5, 0)
 								local direction = (targetPos - origin).Unit
@@ -36400,7 +36400,7 @@ run(function()
 							else
 								blockCount = lplr:GetAttribute('BlockKickerKit_BlockCount') or 0
 							end
-							if AutoStompBlocks and blockCount <= AutoStompBlocks.Value and bedwars.AbilityController:canUseAbility('BLOCK_STOMP') then
+							if store.equippedKit == 'block_kicker' and AutoStompBlocks and blockCount <= AutoStompBlocks.Value and bedwars.AbilityController:canUseAbility('BLOCK_STOMP') then
 								bedwars.AbilityController:useAbility('BLOCK_STOMP')
 								task.wait(0.8)
 							end
@@ -36591,7 +36591,7 @@ run(function()
 								bc = lplr:GetAttribute('BlockKickerKit_BlockCount') or 0
 							end
 							
-							if bc >= 1 and bedwars.AbilityController:canUseAbility('BLOCK_KICK') then
+							if store.equippedKit == 'block_kicker' and bc >= 1 and bedwars.AbilityController:canUseAbility('BLOCK_KICK') then
 								local origin = entitylib.character.RootPart.Position
 								local targetPos = ent.RootPart.Position + Vector3.new(0, 1.5, 0)
 								local direction = (targetPos - origin).Unit
