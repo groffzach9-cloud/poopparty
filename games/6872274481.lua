@@ -8837,14 +8837,14 @@ run(function()
 				end)
 				task.spawn(function()
 					bedwars.ShopTaxController.getAddedTax = function(...)
-						return {}
+						return 0
 					end
 				end)
 				task.spawn(function()
 					repeat
 						bedwars.ShopTaxController.hasTax = 0
 						bedwars.ShopTaxController.taxedItems = {}
-						bedwars.ShopTaxController.addedTaxMap = {}
+						bedwars.ShopTaxController.addedTaxMap = 0
 						task.wait(0.1)
 					until not TaxRemover.Enabled
 				end)
