@@ -1273,30 +1273,25 @@ run(function()
 		return getBlockHealth(block, bedwars.BlockController:getBlockPosition(blockpos)) / tool
 	end
 
-	local function calculatePath(target, blockpos,angle)
-		if cache[blockpos] then
+	local function calculatePath(target, blockpos, angle)
+		if cache[blockpos] and cache[blockpos][4] > tick() then
 			return unpack(cache[blockpos])
 		end
-		local visited = {}
-		local unvisited = {{0, blockpos}}
-		local distances = {[blockpos] = 0}
-		local air = {}
-		local path = {}
-		local unvisitedCount = 1
 
-		for _ = 1, 2000 do
-			if unvisitedCount == 0 then break end
-			local node = unvisited[1]
-			unvisited[1] = unvisited[unvisitedCount]
-			unvisited[unvisitedCount] = nil
-			unvisitedCount = unvisitedCount - 1
+		local visited, unvisited, distances, air, path = {}, {{0, blockpos}}, {[blockpos] = 0}, {}, {}
+		local localPosition = entitylib.isAlive and entitylib.character.RootPart.Position or Vector3.zero
+
+		for _ = 1, 10000 do
+			local _, node = next(unvisited)
+			if not node then break end
+			table.remove(unvisited, 1)
 			visited[node[2]] = true
 
 			for _, side in sides do
-				local neighbor = node[2] + side
-				if visited[neighbor] then continue end
+				side = node[2] + side
+				if visited[side] then continue end
 
-				local block = getPlacedBlock(neighbor)
+				local block = getPlacedBlock(side)
 				if not block or block:GetAttribute('NoBreak') or block == target then
 					if not block then
 						air[node[2]] = true
@@ -1306,32 +1301,36 @@ run(function()
 
 				local plrangle = math.acos((entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)):Dot(((((block.Position - localPosition))) * Vector3.new(1, 0, 1)).Unit))
 				if plrangle > (math.rad(angle) / 2) then continue end
-	
 
-				local curdist = getBlockHits(block, neighbor) + node[1]
-				if curdist < (distances[neighbor] or math.huge) then
-					unvisitedCount = unvisitedCount + 1
-					unvisited[unvisitedCount] = {curdist, neighbor}
-					distances[neighbor] = curdist
-					path[neighbor] = node[2]
+				local curdist = getBlockHits(block, side) + node[1]
+				if curdist < (distances[side] or math.huge) then
+					table.insert(unvisited, {curdist, side})
+					distances[side] = curdist
+					path[side] = node[2]
 				end
 			end
 		end
 
 		local pos, cost = nil, math.huge
 		for node in air do
-			local d = distances[node]
-			if d and d < cost then
-				pos, cost = node, d
+			if distances[node] < cost then
+				pos, cost = node, distances[node]
 			end
 		end
 
 		if pos then
-			local cacheEntry = {pos, cost, path, timestamp = tick()}
-			cache[blockpos] = cacheEntry
+			cache[blockpos] = {
+				pos,
+				cost,
+				path,
+				tick() + (table.find({'Potassium', 'Velocity'}, ({identifyexecutor()})[1]) and 1 or 9e9)
+			}
 			return pos, cost, path
 		end
+
+		return nil
 	end
+
 
 	bedwars.placeBlock = function(pos, item)
 		if getItem(item) then
@@ -13321,52 +13320,139 @@ run(function()
 end)
 	
 run(function()
-    local ShopBypass
-    local originalTiered, nextUpgradeTier = {}, {}
-    local originalShopFunction
-    
-    ShopBypass = vape.Categories.Utility:CreateModule({
-        Name = 'ShopTierBypass',
-        Function = function(callback)
-            if callback then
-                repeat task.wait() until store.shopLoaded or not ShopBypass.Enabled
-                if ShopBypass.Enabled then
-                    for _, item in pairs(bedwars.Shop.ShopItems) do
-                        originalTiered[item] = item.tiered
-                        nextUpgradeTier[item] = item.nextTier
-                        item.nextTier = nil
-                        item.tiered = nil
-                    end
-
-                    originalShopFunction = bedwars.Shop.getShop
-                    bedwars.Shop.getShop = function(...)
-                        local result = {originalShopFunction(...)} 
-
-                        for _, item in pairs(result[1]) do
-                            item.nextTier = nil
-                            item.tiered = nil
-                        end
-
-                        return unpack(result)
-                    end
-                end
-            else
-                for item, tier in pairs(originalTiered) do
-                    item.tiered = tier
-                end
-                for item, nextTier in pairs(nextUpgradeTier) do
-                    item.nextTier = nextTier
-                end
-                if originalShopFunction then
-                    bedwars.Shop.getShop = originalShopFunction
-                    originalShopFunction = nil
-                end
-                table.clear(nextUpgradeTier)
-                table.clear(originalTiered)
-            end
-        end,
-        Tooltip = 'Bypass shop tiers, allowing early purchase of items like armor.'
-    })
+	local ShopTierBypass
+	local tiered, nexttier = {}, {}
+	local originalGetShop
+	local shopItemsTracked = {}
+	
+	local function applyBypassToItem(item)
+		if item and type(item) == "table" then
+			if not tiered[item] then 
+				tiered[item] = item.tiered 
+			end
+			if not nexttier[item] then 
+				nexttier[item] = item.nextTier 
+			end
+			item.nextTier = nil
+			item.tiered = nil
+			shopItemsTracked[item] = true
+		end
+	end
+	
+	local function applyBypassToTable(tbl)
+		if tbl and type(tbl) == "table" then
+			for _, item in pairs(tbl) do
+				if type(item) == "table" then
+					applyBypassToItem(item)
+				end
+			end
+		end
+	end
+	
+	local function getShopController()
+		local success, result = pcall(function()
+			local RuntimeLib = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+			if RuntimeLib then
+				return RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "games", "bedwars", "shop", "bedwars-shop")
+			end
+		end)
+		
+		if success then
+			return result
+		end
+		
+		local shopModule = game:GetService("ReplicatedStorage"):FindFirstChild("TS"):FindFirstChild("games"):FindFirstChild("bedwars"):FindFirstChild("shop"):FindFirstChild("bedwars-shop")
+		if shopModule and shopModule:IsA("ModuleScript") then
+			return require(shopModule)
+		end
+		
+		return nil
+	end
+	
+	ShopTierBypass = vape.Categories.Utility:CreateModule({
+		Name = 'ShopTierBypass',
+		Function = function(callback)
+			if callback then
+				local function collectAndBypass()
+					local itemsSeen = {}
+					if bedwars.Shop and bedwars.Shop.ShopItems then
+						for _, v in pairs(bedwars.Shop.ShopItems) do
+							itemsSeen[v] = true
+						end
+					end
+					if bedwars.ShopItems then
+						for _, v in pairs(bedwars.ShopItems) do
+							itemsSeen[v] = true
+						end
+					end
+					
+					local shopController = getShopController()
+					if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
+						local shopTable = shopController.BedwarsShop.getShop()
+						if type(shopTable) == "table" then
+							for _, v in pairs(shopTable) do
+								itemsSeen[v] = true
+							end
+						end
+					end
+					for item, _ in pairs(itemsSeen) do
+						applyBypassToItem(item)
+					end
+				end
+				collectAndBypass()
+				if bedwars.Shop and bedwars.Shop.getShop and not originalGetShop then
+					originalGetShop = bedwars.Shop.getShop
+					bedwars.Shop.getShop = function(...)
+						local result = originalGetShop(...)
+						if type(result) == "table" then
+							applyBypassToTable(result)
+						end
+						return result
+					end
+				end
+				
+				local shopController = getShopController()
+				if shopController and shopController.BedwarsShop and shopController.BedwarsShop.getShop then
+					if not tiered["shopControllerHooked"] then
+						tiered["shopControllerHooked"] = true
+						local originalControllerGetShop = shopController.BedwarsShop.getShop
+						shopController.BedwarsShop.getShop = function(...)
+							local result = originalControllerGetShop(...)
+							if type(result) == "table" then
+								applyBypassToTable(result)
+							end
+							return result
+						end
+					end
+				end
+			else
+				for item, _ in pairs(shopItemsTracked) do
+					if item and type(item) == "table" then
+						if tiered[item] ~= nil then
+							item.tiered = tiered[item]
+						end
+						if nexttier[item] ~= nil then
+							item.nextTier = nexttier[item]
+						end
+					end
+				end
+				
+				if tiered["shopControllerHooked"] then
+					tiered["shopControllerHooked"] = nil
+				end
+				
+				if originalGetShop then
+					bedwars.Shop.getShop = originalGetShop
+					originalGetShop = nil
+				end
+				
+				table.clear(tiered)
+				table.clear(nexttier)
+				table.clear(shopItemsTracked)
+			end
+		end,
+		Tooltip = 'Lets you buy things like armor and tools early.'
+	})
 end)
 
 run(function()
