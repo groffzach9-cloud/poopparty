@@ -45,7 +45,16 @@ end
 
 local function downloadPremadeProfiles(commit)
     local httpService = game:GetService('HttpService')
-    if not isfolder('newvape/profiles/premade') then
+    
+    if isfolder('newvape/profiles/premade') then
+        for _, file in listfiles('newvape/profiles/premade') do
+            pcall(function()
+                if isfile(file) then
+                    delfile(file)
+                end
+            end)
+        end
+    else
         makefolder('newvape/profiles/premade')
     end
 
@@ -62,14 +71,12 @@ local function downloadPremadeProfiles(commit)
             for _, file in pairs(files) do
                 if file.name and file.name:find('.txt') and file.name ~= 'commit.txt' then
                     local filePath = 'newvape/profiles/premade/' .. file.name
-                    if not isfile(filePath) then
-                        local dl = file.download_url or ('https://raw.githubusercontent.com/poopparty/poopparty/' .. commit .. '/profiles/premade/' .. file.name)
-                        local ds, dc = pcall(function()
-                            return game:HttpGet(dl, true)
-                        end)
-                        if ds and dc and dc ~= '404: Not Found' then
-                            writefile(filePath, dc)
-                        end
+                    local dl = file.download_url or ('https://raw.githubusercontent.com/poopparty/poopparty/' .. commit .. '/profiles/premade/' .. file.name)
+                    local ds, dc = pcall(function()
+                        return game:HttpGet(dl, true)
+                    end)
+                    if ds and dc and dc ~= '404: Not Found' then
+                        writefile(filePath, dc)
                     end
                 end
             end
@@ -138,14 +145,16 @@ if not shared.VapeDeveloper then
 			return jsonService:JSONDecode(paidRes)
 		end)
 		if ok and data and data.accounts then
-			local ids = {}
-			for _, id in data.accounts do
-				if tonumber(id) and tonumber(id) ~= 0 then
-					table.insert(ids, tostring(id))
+			local lines = {}
+			for _, entry in data.accounts do
+				if type(entry) == 'table' and entry.id and entry.tier then
+					if tonumber(entry.id) and tonumber(entry.id) ~= 0 then
+						table.insert(lines, tostring(entry.id) .. ':' .. tostring(entry.tier))
+					end
 				end
 			end
-			if #ids > 0 then
-				writefile('newvape/profiles/paid_accounts.txt', table.concat(ids, '\n'))
+			if #lines > 0 then
+				writefile('newvape/profiles/paid_accounts.txt', table.concat(lines, '\n'))
 			end
 		end
 	end
