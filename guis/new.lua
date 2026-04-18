@@ -6845,20 +6845,25 @@ function mainapi:Load(skipgui, profile)
 	if not skipgui then
 		self.GUIColor:SetValue(nil, nil, nil, 4)
 	end
-	local guidata = {}
+
+	local guidata = {Categories = {}}
 	local savecheck = true
 
-	if isfile('newvape/profiles/'..game.GameId..'.gui.txt') then
-		guidata = loadJson('newvape/profiles/'..game.GameId..'.gui.txt')
-		if not guidata then
-			guidata = {Categories = {}}
-			self:CreateNotification('Vape', 'Failed to load GUI settings.', 10, 'alert')
+	local guiFile = 'newvape/profiles/'..game.GameId..'.gui.txt'
+
+	if isfile(guiFile) then
+		local success, result = pcall(loadJson, guiFile)
+		if success and result then
+			guidata = result
+		else
+			self:CreateNotification('Vape', 'Failed to load GUI settings. Using defaults.', 10, 'alert')
 			savecheck = false
 		end
 
 		if guidata.MobileSettings then
 			local ms = guidata.MobileSettings
 			mobileButtonTransparency = ms.Transparency or 0
+			
 			if ms.BgColor then
 				mobileButtonBgColor = Color3.new(ms.BgColor.R, ms.BgColor.G, ms.BgColor.B)
 			end
@@ -6868,23 +6873,25 @@ function mainapi:Load(skipgui, profile)
 		end
 
 		if not skipgui then
-			self.Keybind = guidata.Keybind
+			self.Keybind = guidata.Keybind or self.Keybind
+
 			for i, v in guidata.Categories do
 				local object = self.Categories[i]
 				if not object then continue end
+
 				if object.Options and v.Options then
 					self:LoadOptions(object, v.Options)
 				end
-				if v.Enabled then
+				if v.Enabled and object.Button then
 					object.Button:Toggle()
 				end
-				if v.Pinned then
-					object:Pin()
+				if v.Pinned then 
+					object:Pin() 
 				end
-				if v.Expanded and object.Expand then
-					object:Expand()
+				if v.Expanded and object.Expand then 
+					object:Expand() 
 				end
-				if v.List and (#object.List > 0 or #v.List > 0) then
+				if v.List then
 					object.List = v.List or {}
 					object.ListEnabled = v.ListEnabled or {}
 					object:ChangeValue()
@@ -6897,134 +6904,148 @@ function mainapi:Load(skipgui, profile)
 	end
 
 	self.Profile = profile or guidata.Profile or 'default'
-	self.Profiles = guidata.Profiles or {{
-		Name = 'default', Bind = {}
-	}}
+	self.Profiles = guidata.Profiles or {{Name = 'default', Bind = {}}}
+
 	if not inputService.TouchEnabled then
-		for _, profile in ipairs(self.Profiles) do
-			if type(profile.Bind) == 'table' and profile.Bind.Mobile then
-				profile.Bind = {}
+		for _, p in ipairs(self.Profiles) do
+			if type(p.Bind) == 'table' and p.Bind.Mobile then
+				p.Bind = {}
 			end
 		end
 	end
+
 	self.Categories.Profiles:ChangeValue()
+
 	if self.ProfileLabel then
-		self.ProfileLabel.Text = #self.Profile > 10 and self.Profile:sub(1, 10)..'...' or self.Profile
-		self.ProfileLabel.Size = UDim2.fromOffset(getfontsize(self.ProfileLabel.Text, self.ProfileLabel.TextSize, self.ProfileLabel.Font).X + 16, 24)
+		local displayName = #self.Profile > 10 and self.Profile:sub(1, 10) .. '...' or self.Profile
+		self.ProfileLabel.Text = displayName
+		self.ProfileLabel.Size = UDim2.fromOffset(getfontsize(displayName, self.ProfileLabel.TextSize, self.ProfileLabel.Font).X + 16, 24)
 	end
 
-	if isfile('newvape/profiles/'..self.Profile..profileId..'.txt') then
-		local savedata = loadJson('newvape/profiles/'..self.Profile..profileId..'.txt')
-		if not savedata then
-			savedata = {Categories = {}, Modules = {}, Legit = {}}
-			self:CreateNotification('Vape', 'Failed to load '..self.Profile..' profile.', 10, 'alert')
+	local profileFile = 'newvape/profiles/'..self.Profile..(profileId or '')..'.txt'
+	local savedata = { Categories = {}, Modules = {}, Legit = {} }
+
+	if isfile(profileFile) then
+		local success, result = pcall(loadJson, profileFile)
+		
+		if success and result then
+			savedata = result
+		else
+			self:CreateNotification('Vape', 'Failed to load '..self.Profile..' profile. Creating a new one.', 10, 'alert')
 			savecheck = false
+			self:Save()
 		end
-
-		for i, v in savedata.Categories do
-			local object = self.Categories[i]
-			if not object then continue end
-			if object.Options and v.Options then
-				self:LoadOptions(object, v.Options)
-			end
-			if v.Pinned ~= object.Pinned then
-				object:Pin()
-			end
-			if v.Expanded ~= nil and v.Expanded ~= object.Expanded then
-				object:Expand()
-			end
-			if object.Button and (v.Enabled or false) ~= object.Button.Enabled then
-				object.Button:Toggle()
-			end
-			if v.List and (#object.List > 0 or #v.List > 0) then
-				object.List = v.List or {}
-				object.ListEnabled = v.ListEnabled or {}
-				object:ChangeValue()
-			end
-			if v.Position then
-				object.Object.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
-			end
-		end
-
-		for i, v in savedata.Modules do
-			local object = self.Modules[i]
-			if not object then continue end
-			if object.Options and v.Options then
-				self:LoadOptions(object, v.Options)
-			end
-			if v.Enabled ~= object.Enabled then
-				if skipgui then
-					if self.ToggleNotifications.Enabled then self:CreateNotification('Module Toggled', i.."<font color='#FFFFFF'> has been </font>"..(v.Enabled and "<font color='#5AFF5A'>Enabled</font>" or "<font color='#FF5A5A'>Disabled</font>").."<font color='#FFFFFF'>!</font>", 0.75) end
-				end
-				object:Toggle(true)
-			end
-			object.KeybindMode = v.KeybindMode or "Toggle"
-			object.HoldCount = 0
-			if inputService.TouchEnabled and type(v.Bind) == 'table' and v.Bind.Mobile then
-				object:SetBind({})
-				object.Object.Bind.Visible = false
-			else
-				object:SetBind(v.Bind)
-				object.Object.Bind.Visible = #v.Bind > 0
-			end
-			if v.Pinned and not object.Pinned then
-				local pinButton = object.Object:FindFirstChild('Pin')
-				if pinButton then
-					pcall(function()
-						for _, connection in getconnections(pinButton.MouseButton1Click) do
-							connection:Fire()
-						end
-					end)
-				end
-			end
-		end
-
-		for _, data in mobileButtons do
-			pcall(function()
-				if data.resizeConn then data.resizeConn:Disconnect() end
-				if data.resizeEndConn then data.resizeEndConn:Disconnect() end
-				if data.button and data.button.Parent then data.button:Destroy() end
-				if data.settingsPanel and data.settingsPanel.Parent then data.settingsPanel:Destroy() end
-			end)
-		end
-		table.clear(mobileButtons)
-		for i, v in savedata.Modules do
-			local object = self.Modules[i]
-			if not object then continue end
-			if inputService.TouchEnabled and type(v.Bind) == 'table' and v.Bind.Mobile then
-				createMobileButton(object, Vector2.new(v.Bind.X or 0, v.Bind.Y or 0), v.Bind.W, v.Bind.H)
-			end
-		end
-
-		for i, v in savedata.Legit do
-			local object = self.Legit.Modules[i]
-			if not object then continue end
-			if object.Options and v.Options then
-				self:LoadOptions(object, v.Options)
-			end
-			if object.Enabled ~= v.Enabled then
-				object:Toggle()
-			end
-			if v.Position and object.Children then
-				object.Children.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
-			end
-		end
-
-		self:UpdateTextGUI(true)
 	else
+		self:CreateNotification('Vape', 'No profile found. Creating new profile for '..self.Profile, 8, 'info')
 		self:Save()
 	end
+
+	for i, v in savedata.Categories or {} do
+		local object = self.Categories[i]
+		if not object then continue end
+
+		if object.Options and v.Options then
+			self:LoadOptions(object, v.Options)
+		end
+		if v.Pinned ~= object.Pinned then object:Pin() end
+		if v.Expanded ~= nil and v.Expanded ~= object.Expanded then object:Expand() end
+		if object.Button and (v.Enabled or false) ~= object.Button.Enabled then
+			object.Button:Toggle()
+		end
+		if v.List then
+			object.List = v.List or {}
+			object.ListEnabled = v.ListEnabled or {}
+			object:ChangeValue()
+		end
+		if v.Position then
+			object.Object.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
+		end
+	end
+
+	for i, v in savedata.Modules or {} do
+		local object = self.Modules[i]
+		if not object then continue end
+
+		if object.Options and v.Options then
+			self:LoadOptions(object, v.Options)
+		end
+
+		if v.Enabled ~= object.Enabled then
+			if skipgui and self.ToggleNotifications.Enabled then
+				self:CreateNotification('Module Toggled', i .. "<font color='#FFFFFF'> has been </font>" .. (v.Enabled and "<font color='#5AFF5A'>Enabled</font>" or "<font color='#FF5A5A'>Disabled</font>") .. "<font color='#FFFFFF'>!</font>", 0.75)
+			end
+			object:Toggle(true)
+		end
+
+		object.KeybindMode = v.KeybindMode or "Toggle"
+		object.HoldCount = 0
+
+		if inputService.TouchEnabled and type(v.Bind) == 'table' and v.Bind.Mobile then
+			object:SetBind({})
+			if object.Object and object.Object.Bind then
+				object.Object.Bind.Visible = false
+			end
+		else
+			object:SetBind(v.Bind or {})
+			if object.Object and object.Object.Bind then
+				object.Object.Bind.Visible = type(v.Bind) == 'table' and #v.Bind > 0
+			end
+		end
+
+		if v.Pinned and not object.Pinned then
+			pcall(function()
+				local pinButton = object.Object:FindFirstChild('Pin')
+				if pinButton then
+					for _, conn in getconnections(pinButton.MouseButton1Click) do
+						conn:Fire()
+					end
+				end
+			end)
+		end
+	end
+
+	for _, data in mobileButtons do
+		pcall(function()
+			if data.button then data.button:Destroy() end
+			if data.settingsPanel then data.settingsPanel:Destroy() end
+		end)
+	end
+	table.clear(mobileButtons)
+
+	for i, v in savedata.Modules or {} do
+		local object = self.Modules[i]
+		if object and inputService.TouchEnabled and type(v.Bind) == 'table' and v.Bind.Mobile then
+			createMobileButton(object, Vector2.new(v.Bind.X or 0, v.Bind.Y or 0), v.Bind.W, v.Bind.H)
+		end
+	end
+
+	for i, v in savedata.Legit or {} do
+		local object = self.Legit.Modules[i]
+		if not object then continue end
+		if object.Options and v.Options then
+			self:LoadOptions(object, v.Options)
+		end
+		if object.Enabled ~= (v.Enabled or false) then
+			object:Toggle()
+		end
+		if v.Position and object.Children then
+			object.Children.Position = UDim2.fromOffset(v.Position.X, v.Position.Y)
+		end
+	end
+
+	self:UpdateTextGUI(true)
 
 	if self.Downloader then
 		self.Downloader:Destroy()
 		self.Downloader = nil
 	end
+
 	if mainapi.ThreadFix then
 		setthreadidentity(8)
 	end
+
 	self.Loaded = savecheck
 	self.Categories.Main.Options.Bind:SetBind(self.Keybind)
-
 	if inputService.TouchEnabled and #self.Keybind == 1 and self.Keybind[1] == 'RightShift' then
 		local button = Instance.new('TextButton')
 		button.Size = UDim2.fromOffset(32, 32)
@@ -7101,8 +7122,9 @@ function mainapi:Remove(obj)
 end
 
 function mainapi:Save(newprofile)
-    if mainapi.ThreadFix then setthreadidentity(8) end
-    if not self.Loaded then return end
+	if mainapi.ThreadFix then setthreadidentity(8) end
+	if not self.Loaded then return end
+
 	local guidata = {
 		Categories = {},
 		Profile = newprofile or self.Profile,
@@ -7114,6 +7136,7 @@ function mainapi:Save(newprofile)
 			ActiveColor = mobileButtonActiveColor and {R = mobileButtonActiveColor.R, G = mobileButtonActiveColor.G, B = mobileButtonActiveColor.B} or nil,
 		}
 	}
+
 	local savedata = {
 		Modules = {},
 		Categories = {},
@@ -7149,12 +7172,13 @@ function mainapi:Save(newprofile)
 				break
 			end
 		end
+
 		savedata.Modules[i] = {
 			Enabled = v.Enabled,
 			Bind = mobileSave or (v.Bind.Button and {Mobile = true, X = v.Bind.Button.Position.X.Offset, Y = v.Bind.Button.Position.Y.Offset} or v.Bind),
 			Options = mainapi:SaveOptions(v, true),
 			Pinned = v.Pinned or false,
-			KeybindMode = v.KeybindMode or "Toggle"   
+			KeybindMode = v.KeybindMode or "Toggle"
 		}
 	end
 
@@ -7162,20 +7186,21 @@ function mainapi:Save(newprofile)
 		savedata.Legit[i] = {
 			Enabled = v.Enabled,
 			Position = v.Children and {X = v.Children.Position.X.Offset, Y = v.Children.Position.Y.Offset} or nil,
-			Options = v.Options and mainapi:SaveOptions(v, v.Options) or nil  
+			Options = v.Options and mainapi:SaveOptions(v, v.Options) or nil
 		}
 	end
 
-	local guiPath = writefile('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guidata))
-	local profilePath = writefile('newvape/profiles/'..self.Profile..profileId..'.txt', httpService:JSONEncode(savedata))
+	local guiPath = 'newvape/profiles/' .. game.GameId .. '.gui.txt'
+	local profilePath = 'newvape/profiles/' .. self.Profile .. (profileId or '') .. '.txt'
 
-	local ok1 = pcall(writefile, guiPath, httpService:JSONEncode(guidata))
-	if not ok1 then
+	pcall(writefile, guiPath, httpService:JSONEncode(guidata))
+	pcall(writefile, profilePath, httpService:JSONEncode(savedata))
+
+	if not pcall(writefile, guiPath, httpService:JSONEncode(guidata)) then
 		pcall(writefile, guiPath:gsub('%.', '_'), httpService:JSONEncode(guidata))
 	end
 
-	local ok2 = pcall(writefile, profilePath, httpService:JSONEncode(savedata))
-	if not ok2 then
+	if not pcall(writefile, profilePath, httpService:JSONEncode(savedata)) then
 		pcall(writefile, profilePath:gsub('%.', '_'), httpService:JSONEncode(savedata))
 	end
 end
