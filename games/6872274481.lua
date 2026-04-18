@@ -3357,9 +3357,7 @@ run(function()
                         if input.UserInputType == Enum.UserInputType.MouseButton1 then
                             ActivationScheduled = task.delay(MIN_HOLD_TIME, function()
                                 ActivationScheduled = nil
-                                if inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                                    AutoClickAero()
-                                end
+								AutoClickAero()
                             end)
                         end
                     end))
@@ -20434,6 +20432,8 @@ run(function()
 	local NoFall
 	local NoFallMethod
 	local LimitToItems
+	local HealthCheck
+	local HealthThreshold
 
 	local nfRayParams = RaycastParams.new()
 	nfRayParams.FilterType = Enum.RaycastFilterType.Blacklist
@@ -20556,7 +20556,12 @@ run(function()
 						local fallHeight = fallStartY and ((fallStartY - root.Position.Y) / 3) or 0
 						local groundRay = workspace:Raycast(root.Position, Vector3.new(0, -99935, 0), nfRayParams)
 
-						if falling and groundRay and fallHeight >= 7 and not pearlFired and not blockedByManual and (currentTime - cooldown) > 1 then
+						local healthOk = true
+						if HealthCheck and HealthCheck.Enabled then
+							local hp = lplr.Character:GetAttribute('Health') or 100
+							healthOk = hp <= (HealthThreshold and HealthThreshold.Value or 50)
+						end
+						if falling and groundRay and fallHeight >= 7 and not pearlFired and not blockedByManual and (currentTime - cooldown) > 1 and healthOk then
 							local method = NoFallMethod and NoFallMethod.Value or 'TelePearl'
 							if method == 'TelePearl' then
 								if pearl then
@@ -20592,6 +20597,24 @@ run(function()
 		Name = 'Limit to Pearl',
 		Default = false,
 		Tooltip = 'Only pearls when already holding pearl'
+	})
+	HealthCheck = NoFall:CreateToggle({
+		Name = 'HP Threshold',
+		Default = false,
+		Tooltip = 'Only pearls when HP is at or below the set value',
+		Function = function(callback)
+			if HealthThreshold and HealthThreshold.Object then
+				HealthThreshold.Object.Visible = callback
+			end
+		end
+	})
+	HealthThreshold = NoFall:CreateSlider({
+		Name = 'Health',
+		Min = 1,
+		Max = 100,
+		Default = 50,
+		Suffix = 'hp',
+		Visible = false
 	})
 end)
 
