@@ -5591,8 +5591,10 @@ run(function()
             attackTable.validate.selfPosition.value = newSelf
             attackTable.validate.targetPosition.value = newTarget
             attackTable.validate.raycast = attackTable.validate.raycast or {}
-            attackTable.validate.raycast.cameraPosition = {value = newSelf + Vector3.new(0, 1.5, 0)}
-            attackTable.validate.raycast.cursorDirection = {value = direction}
+            local newCamPos = newSelf + Vector3.new(0, 1.5, 0)
+            local newDir = (newTarget - newCamPos).Unit
+            attackTable.validate.raycast.cameraPosition = {value = newCamPos}
+            attackTable.validate.raycast.cursorDirection = {value = newDir}
         end
 
         if suc and plr then
@@ -6357,10 +6359,10 @@ run(function()
 
                                     local actualRoot = v.Character.PrimaryPart
                                     if actualRoot then
-                                        local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
-
                                         local pos = selfpos
                                         local targetPos = actualRoot.Position
+                                        local camPos = gameCamera.CFrame.Position
+                                        local dir = (targetPos - camPos).Unit
 
                                         if not SyncHits.Enabled or (tick() - swingCooldown) >= 0.1 then
                                             swingCooldown = tick()
@@ -6388,21 +6390,13 @@ run(function()
                                                 chargedAttack = {chargeRatio = 0},
                                                 validate = {
                                                     raycast = {
-                                                        cameraPosition = {value = pos + Vector3.new(0, 2.5, 0)},
+                                                        cameraPosition = {value = camPos},
                                                         cursorDirection = {value = dir}
                                                     },
                                                     targetPosition = {value = targetPos},
                                                     selfPosition = {value = pos}
                                                 }
                                             }
-                                            
-                                            attackData.validate = attackData.validate or {}
-                                            attackData.validate.raycast = attackData.validate.raycast or {}
-                                            attackData.validate.targetPosition = attackData.validate.targetPosition or {value = targetPos}
-                                            attackData.validate.selfPosition = attackData.validate.selfPosition or {value = pos}
-                                            
-                                            attackData.validate.raycast.cameraPosition = attackData.validate.raycast.cameraPosition or {value = pos}
-                                            attackData.validate.raycast.cursorDirection = attackData.validate.raycast.cursorDirection or {value = dir}
                                             
 											if canHit then
                                                 FireAttackRemote(attackData)
@@ -9827,10 +9821,12 @@ run(function()
 							return bedwars.BedwarsKitMeta[kit]
 						end)	
 						local newKitImage = nil
-						if suc then
+						if suc and res then
 							newKitImage = res.renderImage
 						else
-							warn(`[AEROV4 MODULE ISSUE]: [Module - NameTags (Using bedwars.BedwarsKitMeta)] [Error]: {res}`)
+							if not suc then
+								warn(`[AEROV4 MODULE ISSUE]: [Module - NameTags (Using bedwars.BedwarsKitMeta)] [Error]: {res}`)
+							end
 							newKitImage = kitImageIds[kit] or kitImageIds['none'] 
 						end
 						if kitCache[ent] ~= newKitImage then
@@ -15517,6 +15513,10 @@ run(function()
 
 	local function passesChecks(v)
 		if not SelfBreak.Enabled then
+			if v.Name == 'bed' then
+				local myTeam = lplr:GetAttribute('Team')
+				if myTeam and v:GetAttribute('Team'..myTeam..'NoBreak') then return false end
+			end
 			if v:GetAttribute('PlacedByUserId') == lplr.UserId then return false end
 			if isSameTeam(v:GetAttribute('PlacedByUserId')) then return false end
 		end
@@ -15629,18 +15629,20 @@ run(function()
 	local function attemptBreak(tab, localPosition)
 		if not tab then return false end
 		if MouseDown and MouseDown.Enabled and not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
-		if RagnarBreaker and RagnarBreaker.Enabled then
-			if bedwars.AbilityController:canUseAbility("berserker_rage") and store.equippedKit == 'berserker' and bedwars.AbilityController then
-				bedwars.AbilityController:useAbility('berserker_rage')
-			end
-		end
 		for _, v in tab do
-			local blockPos = bedwars.BlockController:getBlockPosition(v.Position)
-			local ok, canBreak = pcall(function() return bedwars.BlockController:isBlockBreakable({blockPosition = blockPos}, lplr) end)
-			if (v.Position - localPosition).Magnitude < Range.Value and (v.Name == 'bed' or (ok and canBreak)) then
-				if not passesChecks(v) then continue end
-				return doBreak(v)
+			if (v.Position - localPosition).Magnitude >= Range.Value then continue end
+			if v.Name ~= 'bed' then
+				local blockPos = bedwars.BlockController:getBlockPosition(v.Position)
+				local ok, canBreak = pcall(function() return bedwars.BlockController:isBlockBreakable({blockPosition = blockPos}, lplr) end)
+				if not (ok and canBreak) then continue end
 			end
+			if not passesChecks(v) then continue end
+			if RagnarBreaker and RagnarBreaker.Enabled then
+				if store.equippedKit == 'berserker' and bedwars.AbilityController and bedwars.AbilityController:canUseAbility("berserker_rage") then
+					bedwars.AbilityController:useAbility('berserker_rage')
+				end
+			end
+			return doBreak(v)
 		end
 		return false
 	end
@@ -15693,6 +15695,9 @@ run(function()
 				local beds = collection('bed', Breaker)
 				local luckyblock = collection('LuckyBlock', Breaker)
 				local ironores = collection('iron_ore_mesh_block', Breaker)
+				local teslaBlocks = collection('tesla_trap', Breaker)
+				local hiveBlocks = collection('beehive', Breaker)
+				local pinataBlocks = collection('pinata', Breaker)
 				customlist = collection('block', Breaker, function(tab, obj)
 					if table.find(Custom.ListEnabled, obj.Name) then
 						table.insert(tab, obj)
@@ -15724,14 +15729,14 @@ run(function()
 						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition) then continue end
 						if attemptBreak(IronOre.Enabled and ironores, localPosition) then continue end
 
-						do
-							local activeNames = {}
-							if Tesla and Tesla.Enabled then table.insert(activeNames, 'tesla_trap') end
-							if Hive and Hive.Enabled then table.insert(activeNames, 'beehive') end
-							if Pinata and Pinata.Enabled then table.insert(activeNames, 'pinata') end
-							if #activeNames > 0 then
-								if attemptBreakNamed(activeNames, localPosition) then continue end
-							end
+						if Tesla and Tesla.Enabled then
+							if attemptBreak(teslaBlocks, localPosition) then continue end
+						end
+						if Hive and Hive.Enabled then
+							if attemptBreak(hiveBlocks, localPosition) then continue end
+						end
+						if Pinata and Pinata.Enabled then
+							if attemptBreak(pinataBlocks, localPosition) then continue end
 						end
 
 						for _, v in parts do
@@ -26159,7 +26164,7 @@ run(function()
 				if disguiseName and disguiseName ~= "" then
 					self.disguises[v] = disguiseName
 					v:SetAttribute("DisguiseDisplayName", "")
-					InfoNotification("Remove Disguises", "Disabled streamer mode for "..tostring(v.Name).."!", 3)
+					notif("Remove Disguises", "Disabled streamer mode for "..tostring(v.Name).."!", 3)
 				end
 			end
 			pcall(function() Knit.Controllers.StreamerModeController:updateNametags(true) end)
@@ -26167,7 +26172,7 @@ run(function()
 			for v, originalName in pairs(self.disguises) do
 				if v and v.Parent then
 					v:SetAttribute("DisguiseDisplayName", originalName)
-					InfoNotification("Remove Disguises", "Re-enabled Streamer mode for "..tostring(v.Name).."!", 2)
+					notif("Remove Disguises", "Re-enabled Streamer mode for "..tostring(v.Name).."!", 2)
 				end
 			end
 			table.clear(self.disguises)
@@ -32629,26 +32634,8 @@ run(function()
     local bedassistshopcheck = {Enabled = false}
 	local bedassisthandcheck = {Enabled = false}
 
-	local function getPickaxeNear()
-		for i5, v5 in pairs(store.inventory.inventory.items) do
-			if v5.itemType:find("pickaxe") then
-				return v5.itemType
-			end
-		end
-		return nil
-	end
-
-	local function getAxeNear()
-		for i5, v5 in pairs(store.inventory.inventory.items) do
-			if v5.itemType:find("axe") and v5.itemType:find("pickaxe") == nil then
-				return v5.itemType
-			end
-		end
-		return nil
-	end
-
 	local function checkHand()
-		return getPickaxeNear() or getAxeNear()
+		return isHoldingPickaxe() or isHoldingItem({'axe'})
 	end
 
     local camera = gameCamera
