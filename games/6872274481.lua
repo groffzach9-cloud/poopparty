@@ -5581,19 +5581,25 @@ run(function()
         store.attackReach = (actualDistance * 100) // 1 / 100
         store.attackReachUpdate = tick() + 1
 
-        if actualDistance > 14.0 and actualDistance <= 30 then
+        -- Only adjust targetPos toward actual selfpos — NEVER move selfPos.
+        -- The server cross-checks selfPos against the player's actual server position.
+        -- Moving selfPos causes ghost hits because the discrepancy exceeds server tolerance.
+        if actualDistance > 13.5 and actualDistance <= 20 then
             local direction = (targetpos - selfpos).Unit
-            local shrinkNeeded = actualDistance - 13.8
-            local selfMove = shrinkNeeded * 0.6
-            local targetPull = shrinkNeeded * 0.4
-            local newSelf = selfpos + direction * selfMove
-            local newTarget = targetpos - direction * targetPull
-            attackTable.validate.selfPosition.value = newSelf
+            -- Pull target toward actual self. Cap at 3.5 studs (server target-position lag tolerance).
+            local pullNeeded = actualDistance - 13.0
+            local safePull = math.min(pullNeeded, 3.5)
+            local newTarget = targetpos - direction * safePull
             attackTable.validate.targetPosition.value = newTarget
+            -- Recalculate cursor direction from the ACTUAL camera toward the adjusted target.
+            -- selfPos stays as actual player position — do not touch it.
             attackTable.validate.raycast = attackTable.validate.raycast or {}
-            local newCamPos = newSelf + Vector3.new(0, 1.5, 0)
-            local newDir = (newTarget - newCamPos).Unit
-            attackTable.validate.raycast.cameraPosition = {value = newCamPos}
+            local camPos = (
+                attackTable.validate.raycast.cameraPosition and
+                attackTable.validate.raycast.cameraPosition.value
+            ) or (selfpos + Vector3.new(0, 1.5, 0))
+            local newDir = (newTarget - camPos).Unit
+            attackTable.validate.raycast.cameraPosition = {value = camPos}
             attackTable.validate.raycast.cursorDirection = {value = newDir}
         end
 
@@ -6026,7 +6032,8 @@ run(function()
 
         local selfpos = entitylib.character.RootPart.Position
         local dist = (ent.RootPart.Position - selfpos).Magnitude
-        if dist > AttackRange.Value then return end
+        -- +1 stud so fast hits shoots slightly BEFORE normal attack range connects
+        if dist > (AttackRange.Value + 1) then return end
 
         if FastHitsMode.Value == 'OGFastHits' then
             doFastHitsVirtualInput(ent)
@@ -6118,6 +6125,14 @@ run(function()
                 resetSwordCooldown() 
                 lastTargetTime = 0 
                 continueSwingCount = 0
+
+                -- If both Mouse and SwingOnly were already on before killaura enabled,
+                -- catch it here and disable both so the fast-swing bug can't happen.
+                if Mouse and LegitAura and Mouse.Enabled and LegitAura.Enabled then
+                    Mouse:Toggle(false)
+                    LegitAura:Toggle(false)
+                    notif("Killaura", "yo u cant have require mouse down AND swing only both on at da same time turned both off 4 u", 5)
+                end
 
                 if RangeCircle.Enabled then
                     createRangeCircle()
@@ -6379,6 +6394,11 @@ run(function()
                                             if delta.Magnitude < 14.4 and SwingTimeSlider.Value > 0.11 then
                                                 AnimDelay = tick()
                                             end
+                                        else
+                                            -- Always track lastAttackTime even without SwingTime.
+                                            -- Prevents burst-fire which causes server-side cooldown rejections
+                                            -- that show up as stuttering hitreg.
+                                            lastAttackTime = tick()
                                         end
 
                                         if isClaw then
