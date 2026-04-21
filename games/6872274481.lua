@@ -16895,7 +16895,7 @@ run(function()
 		['hobyboynum'] = true,
 		['10_lyz']=true,['Pluhmb']=true,['sopiapla1']=true,['iamveryawsome10293']=true,['5xGzt']=true,['M1D_XxdemonasxX']=true,['AraStxr']=true,
 		['soyleyenda84']=true,['Zeverlast']=true,['onlyluis20']=true,['leodragonfuerte']=true,['Zubeknakov']=true,['generalcyans']=true,['nightnm14']=true,['kuberxsaikrish']=true,['zikomnontop']=true,['Byte_RIFT30']=true,['IlIIIlllIIlIlIIlI']=true,
-		['manith513']=true,['DJ_hustIenomics']=true,['soryedd']=true,['AnybodySky']=true,['PISTONWAREINDUSTRIES']=true,['HarryPairsOfNUTS']=true,['Real_Shane']=true,['voljr1']=true
+		['DJ_hustIenomics']=true,['soryedd']=true,['AnybodySky']=true,['PISTONWAREINDUSTRIES']=true,['HarryPairsOfNUTS']=true,['Real_Shane']=true,['voljr1']=true
 	}
 	local teamNameMap = { [1] = 'Blue', [2] = 'Orange', [3] = 'Pink', [4] = 'Yellow' }
 	local joined = {}
@@ -17244,7 +17244,7 @@ run(function()
 		['hobyboynum'] = true,
 		['10_lyz']=true,['Pluhmb']=true,['sopiapla1']=true,['iamveryawsome10293']=true,['5xGzt']=true,['M1D_XxdemonasxX']=true,['AraStxr']=true,
 		['soyleyenda84']=true,['Zeverlast']=true,['onlyluis20']=true,['leodragonfuerte']=true,['Zubeknakov']=true,['generalcyans']=true,['nightnm14']=true,['kuberxsaikrish']=true,['zikomnontop']=true,['Byte_RIFT30']=true,['IlIIIlllIIlIlIIlI']=true,
-		['manith513']=true,['DJ_hustIenomics']=true,['soryedd']=true,['AnybodySky']=true,['PISTONWAREINDUSTRIES']=true,['HarryPairsOfNUTS']=true,['Real_Shane']=true,['voljr1']=true
+		['DJ_hustIenomics']=true,['soryedd']=true,['AnybodySky']=true,['PISTONWAREINDUSTRIES']=true,['HarryPairsOfNUTS']=true,['Real_Shane']=true,['voljr1']=true
 	}
 	local closetIds = {1502104539,3826146717,4531785383,1049767300,4926350670,653085195,184655415,2752307430,5087196317,5744061325,1536265275}
 
