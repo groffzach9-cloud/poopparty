@@ -3213,41 +3213,31 @@ run(function()
 			task.cancel(Thread)
 		end
 	
-		Thread = task.delay(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue(), function()
-			repeat
+		Thread = task.spawn(function()
+			while AutoClicker.Enabled do
 				if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
-					local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-					if store.hand.toolType == 'block' and blockPlacer then
-						if canDebug then
-							if inputService.TouchEnabled then
-								task.spawn(function()
-									blockPlacer:autoBridge(workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime() >= 0.2)
+					
+					if store.hand.toolType == 'block' then
+						local blockPlacer = bedwars.BlockPlacementController.blockPlacer
+						if blockPlacer then
+							local mouseInfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
+							
+							if mouseInfo and mouseInfo.placementPosition then
+								pcall(function()
+									blockPlacer:placeBlock(mouseInfo.placementPosition)
 								end)
-							else
-								if (workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp) >= ((1 / 12) * 0.5) then
-									local mouseinfo
-									if canDebug then
-										mouseinfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
-									else
-										mouseinfo = {placementPosition = lplr:GetMouse().Hit.Position}
-									end
-									if mouseinfo and mouseinfo.placementPosition == mouseinfo.placementPosition then
-										if canDebug then
-											task.spawn(blockPlacer.placeBlock, blockPlacer, mouseinfo.placementPosition)
-										else
-											bedwars.placeBlock(({getPlacedBlock(mouseinfo.placementPosition)})[2])
-										end
-									end
-								end
 							end
 						end
+						
 					elseif store.hand.toolType == 'sword' then
-						bedwars.SwordController:swingSwordAtMouse(0.39)
+						pcall(function()
+							bedwars.SwordController:swingSwordAtMouse(0.35)
+						end)
 					end
 				end
 	
-				task.wait(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue()) -- 
-			until not AutoClicker.Enabled
+				task.wait(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue())
+			end
 		end)
 	end
 	
@@ -3271,13 +3261,16 @@ run(function()
 				if inputService.TouchEnabled then
 					for _, v in {'2', '5'} do
 						pcall(function()
-							AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Down:Connect(AutoClick))
-							AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Up:Connect(function()
-								if Thread then
-									task.cancel(Thread)
-									Thread = nil
-								end
-							end))
+							local button = lplr.PlayerGui:FindFirstChild("MobileUI", true) and lplr.PlayerGui.MobileUI:FindFirstChild(v)
+							if button then
+								AutoClicker:Clean(button.MouseButton1Down:Connect(AutoClick))
+								AutoClicker:Clean(button.MouseButton1Up:Connect(function()
+									if Thread then
+										task.cancel(Thread)
+										Thread = nil
+									end
+								end))
+							end
 						end)
 					end
 				end
@@ -3290,13 +3283,15 @@ run(function()
 		end,
 		Tooltip = 'Hold attack button to automatically click'
 	})
+	
 	CPS = AutoClicker:CreateTwoSlider({
 		Name = 'CPS',
 		Min = 1,
-		Max = 9,
-		DefaultMin = 7,
-		DefaultMax = 7
+		Max = 20,
+		DefaultMin = 14,
+		DefaultMax = 16
 	})
+	
 	AutoClicker:CreateToggle({
 		Name = 'Place Blocks',
 		Default = true,
@@ -3306,12 +3301,13 @@ run(function()
 			end
 		end
 	})
+	
 	BlockCPS = AutoClicker:CreateTwoSlider({
 		Name = 'Block CPS',
 		Min = 1,
-		Max = 20,
+		Max = 30,
 		DefaultMin = 12,
-		DefaultMax = 12,
+		DefaultMax = 18,
 		Darker = true
 	})
 end)
