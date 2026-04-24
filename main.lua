@@ -110,7 +110,18 @@ local function finishLoading()
         if not vape.Categories then return end
         if vape.Categories.Main.Options['GUI bind indicator'].Enabled then
             local name = shared.ValidatedUsername and ('wsg, ' .. shared.ValidatedUsername .. ' :D ') or 'welcome '
-            vape:CreateNotification('[AEROV4] Finished Loading', name .. (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press ' .. table.concat(vape.Keybind, ' + '):upper() .. ' to open GUI'), 5)
+            task.spawn(function()
+                local deadline = tick() + 15
+                while tick() < deadline do
+                    if getgenv()._aeroTierReady then break end
+                    task.wait(0.5)
+                end
+                local tier = 0
+                if getgenv().getAeroTier then
+                    tier = getgenv().getAeroTier(playersService.LocalPlayer) or 0
+                end
+                vape:CreateNotification('[AEROV4] Finished Loading [Tier ' .. tostring(tier) .. ']', name .. (vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press ' .. table.concat(vape.Keybind, ' + '):upper() .. ' to open GUI'), 5)
+            end)
         end
     end
 end
