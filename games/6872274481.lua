@@ -1,3 +1,4 @@
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -126,14 +127,6 @@ local AntiFallPart
 local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
 local originalKnit 
 
-local ENABLE_BACKEND_TIERS = false   
-
-
-local function startWL()
-	if not ENABLE_BACKEND_TIERS then
-		getgenv().getAeroTier = function() return 0 end
-		return
-	end
 
 	local _tierCache = {}
 	local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
@@ -329,9 +322,6 @@ local function startWL()
 			end
 		end
 	end)
-end
-
-task.spawn(startWL)
 
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
