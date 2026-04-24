@@ -31370,6 +31370,7 @@ run(function()
 			end
 
 			SilentAura:Clean(runService.Heartbeat:Connect(function()
+				local currentTime = tick()
 				if not entitylib.isAlive or store.hand.toolType ~= 'sword' then
 					Attacking = false
 					return
