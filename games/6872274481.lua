@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -1751,7 +1750,7 @@ run(function()
 	end)
 end)
 
-for _, v in {'AntiRagdoll', 'TriggerBot', 'SilentAim', 'AutoRejoin', 'Rejoin', 'Disabler', 'Timer', 'ServerHop', 'MouseTP', 'MurderMystery', 'NameTags', 'Anti-Afk'} do
+for _, v in {'AntiRagdoll', 'TriggerBot', 'SilentAim', 'AutoRejoin', 'Rejoin', 'Disabler', 'Timer', 'ServerHop', 'MouseTP', 'MurderMystery', 'NameTags'} do
 	vape:Remove(v)
 end
 
@@ -3202,127 +3201,267 @@ run(function()
     end)
 end)
 	
-	
 run(function()
-	local AutoClicker
-	local CPS
-	local BlockCPS
-	local Thread
-	local IsHodlinButton = false
-	local function AutoClick()
-		if Thread then
-			task.cancel(Thread)
-		end
-	
-		Thread = task.delay(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue(), function()
-			repeat
-				if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
-					local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-					if store.hand.toolType == 'block' and blockPlacer then
-						if canDebug then
-							if inputService.TouchEnabled then
-								task.spawn(function()
-									blockPlacer:autoBridge(workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime() >= 0.2)
-								end)
-							else
-								if (workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp) >= ((1 / 12) * 0.5) then
-									local mouseinfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
-									if mouseinfo and mouseinfo.placementPosition == mouseinfo.placementPosition then
-										task.spawn(blockPlacer.placeBlock, blockPlacer, mouseinfo.placementPosition)
-									end
-								end
-							end
-						end
-					elseif store.hand.toolType == 'sword' then
-						bedwars.SwordController:swingSwordAtMouse(0.39)
-					end
-				end
-	
-				task.wait(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue()) -- 
-			until not AutoClicker.Enabled
-		end)
-	end
-	
-	AutoClicker = vape.Categories.Combat:CreateModule({
-		Name = 'AutoClicker',
-		Function = function(callback)
-			if callback then
-				AutoClicker:Clean(inputService.InputBegan:Connect(function(input)
-					if input.UserInputType == Enum.UserInputType.MouseButton1 then
-						AutoClick()
-					end
-				end))
-	
-				AutoClicker:Clean(inputService.InputEnded:Connect(function(input)
-					if input.UserInputType == Enum.UserInputType.MouseButton1 and Thread then
-						task.cancel(Thread)
-						Thread = nil
-					end
-				end))
-	
-				if inputService.TouchEnabled then
-					for _, v in {'2', '5'} do
-						pcall(function()
-							AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Down:Connect(function()
-								IsHodlinButton = true
-								AutoClick()
-							end))
-							AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Up:Connect(function()
-								if Thread then
-									IsHodlinButton = false
-									task.cancel(Thread)
-									Thread = nil
-								end
-							end))
-							AutoClicker:Clean(runService.RenderStepped:Connect(function()
-								if IsHodlinButton then
-									AutoClick()
-								else
-									if Thread then
-										IsHodlinButton = false
-										task.cancel(Thread)
-										Thread = nil
-									end
-								end
-							end))
-						end)
-					end
-				end
-			else
-				IsHodlinButton = false
-				if Thread then
-					task.cancel(Thread)
-					Thread = nil
-				end
-			end
-		end,
-		Tooltip = 'Hold attack button to automatically click'
-	})
-	CPS = AutoClicker:CreateTwoSlider({
-		Name = 'CPS',
-		Min = 1,
-		Max = 9,
-		DefaultMin = 7,
-		DefaultMax = 7
-	})
-	AutoClicker:CreateToggle({
-		Name = 'Place Blocks',
-		Default = true,
-		Function = function(callback)
-			if BlockCPS and BlockCPS.Object then
-				BlockCPS.Object.Visible = callback
-			end
-		end
-	})
-	BlockCPS = AutoClicker:CreateTwoSlider({
-		Name = 'Block CPS',
-		Min = 1,
-		Max = 20,
-		DefaultMin = 12,
-		DefaultMax = 12,
-		Darker = true
-	})
-end)
+    if isMobile then
+        local AutoClicker
+        local CPS
+        local BlockCPS = {}
+        local Thread
+
+        local function getSafeCPS()
+            if store.hand and store.hand.toolType == 'block' and BlockCPS and BlockCPS.GetRandomValue then
+                return BlockCPS
+            end
+            if CPS and CPS.GetRandomValue then
+                return CPS
+            end
+            return nil
+        end
+
+        local function AutoClick()
+            if Thread then
+                task.cancel(Thread)
+                Thread = nil
+            end
+
+            local initialCPS = getSafeCPS()
+            if not initialCPS then return end
+
+            Thread = task.delay(1 / initialCPS.GetRandomValue(), function()
+                repeat
+                    if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+                        local blockPlacer = bedwars.BlockPlacementController and bedwars.BlockPlacementController.blockPlacer
+                        local toolType = store.hand and store.hand.toolType
+
+                        if toolType == 'block' and blockPlacer then
+                            task.spawn(function()
+                                blockPlacer:autoBridge(workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime() >= 0.2)
+                            end)
+                        elseif toolType == 'sword' then
+                            bedwars.SwordController:swingSwordAtMouse(0.39)
+                        end
+                    end
+
+                    local currentCPS = getSafeCPS()
+                    if not currentCPS then
+                        task.wait(0.1)
+                    else
+                        task.wait(1 / currentCPS.GetRandomValue())
+                    end
+                until not AutoClicker.Enabled
+            end)
+        end
+
+        local function StopClick()
+            if Thread then
+                task.cancel(Thread)
+                Thread = nil
+            end
+        end
+
+        AutoClicker = vape.Categories.Combat:CreateModule({
+            Name = 'AutoClicker',
+            Function = function(callback)
+                if callback then
+                    AutoClicker:Clean(inputService.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            AutoClick()
+                        end
+                    end))
+
+                    AutoClicker:Clean(inputService.InputEnded:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            StopClick()
+                        end
+                    end))
+
+                    for _, v in {'2', '5'} do
+                        pcall(function()
+                            AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Down:Connect(AutoClick))
+                            AutoClicker:Clean(lplr.PlayerGui.MobileUI[v].MouseButton1Up:Connect(StopClick))
+                        end)
+                    end
+                else
+                    StopClick()
+                end
+            end,
+            Tooltip = 'Hold attack button to automatically click'
+        })
+
+        CPS = AutoClicker:CreateTwoSlider({
+            Name = 'CPS',
+            Min = 1,
+            Max = 9,
+            DefaultMin = 7,
+            DefaultMax = 7
+        })
+
+        AutoClicker:CreateToggle({
+            Name = 'Place Blocks',
+            Default = true,
+            Function = function(callback)
+                if BlockCPS.Object then
+                    BlockCPS.Object.Visible = callback
+                end
+            end
+        })
+
+        BlockCPS = AutoClicker:CreateTwoSlider({
+            Name = 'Block CPS',
+            Min = 1,
+            Max = 20,
+            DefaultMin = 12,
+            DefaultMax = 12,
+            Darker = true
+        })
+
+        task.defer(function()
+            if BlockCPS and BlockCPS.Object then
+                BlockCPS.Object.Visible = PlaceBlocksToggle and PlaceBlocksToggle.Enabled
+            end
+        end)
+
+    else
+        local AutoClicker
+        local CPS
+        local BlockCPS = {}
+        local SwordCPS = {}
+        local PlaceBlocksToggle
+        local SwingSwordToggle
+        local Thread
+
+        local task_wait = task.wait
+        local task_spawn = task.spawn
+        local workspace_GetServerTimeNow = function() return workspace:GetServerTimeNow() end
+
+        local function getSafeCPS()
+            local toolType = store.hand and store.hand.toolType or nil
+            if toolType == 'block' and PlaceBlocksToggle and PlaceBlocksToggle.Enabled and BlockCPS and BlockCPS.GetRandomValue then
+                return BlockCPS
+            elseif toolType == 'sword' and SwingSwordToggle and SwingSwordToggle.Enabled and SwordCPS and SwordCPS.GetRandomValue then
+                return SwordCPS
+            elseif CPS and CPS.GetRandomValue then
+                return CPS
+            end
+            return nil
+        end
+
+        local function AutoClickAero()
+            if Thread then task.cancel(Thread) end
+            Thread = task_spawn(function()
+                repeat
+                    if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+                        local toolType = store.hand and store.hand.toolType
+                        if PlaceBlocksToggle.Enabled and toolType == 'block' then
+                            local blockPlacer = bedwars.BlockPlacementController and bedwars.BlockPlacementController.blockPlacer
+                            if blockPlacer then
+                                if (workspace_GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp) >= ((1 / 12) * 0.5) then
+                                    local mouseinfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
+                                    if mouseinfo and mouseinfo.placementPosition == mouseinfo.placementPosition then
+                                        task_spawn(blockPlacer.placeBlock, blockPlacer, mouseinfo.placementPosition)
+                                    end
+                                end
+                            end
+                        elseif SwingSwordToggle.Enabled and toolType == 'sword' then
+                            bedwars.SwordController:swingSwordAtMouse(0.39)
+                        end
+                    end
+
+                    local currentCPS = getSafeCPS()
+                    task_wait(1 / (currentCPS and currentCPS.GetRandomValue() or 7))
+                until not AutoClicker.Enabled
+            end)
+        end
+
+        local function StopAutoClick()
+            if Thread then
+                task.cancel(Thread)
+                Thread = nil
+            end
+        end
+
+        local MIN_HOLD_TIME = 0.12
+        local ActivationScheduled = nil
+
+        AutoClicker = vape.Categories.Combat:CreateModule({
+            Name = 'AutoClicker',
+            Function = function(callback)
+                if callback then
+                    AutoClicker:Clean(inputService.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            ActivationScheduled = task.delay(MIN_HOLD_TIME, function()
+                                ActivationScheduled = nil
+                                if inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                                    AutoClickAero()
+                                end
+                            end)
+                        end
+                    end))
+                    AutoClicker:Clean(inputService.InputEnded:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            if ActivationScheduled then
+                                task.cancel(ActivationScheduled)
+                                ActivationScheduled = nil
+                            end
+                            if Thread then
+                                task.cancel(Thread)
+                                Thread = nil
+                            end
+                        end
+                    end))
+                else
+                    StopAutoClick()
+                end
+            end,
+            Tooltip = 'Clicks for you'
+        })
+
+        PlaceBlocksToggle = AutoClicker:CreateToggle({
+            Name = 'Place Blocks',
+            Default = false,
+            Function = function(callback)
+                task.defer(function()
+                    if BlockCPS and BlockCPS.Object then BlockCPS.Object.Visible = callback end
+                end)
+            end
+        })
+
+        BlockCPS = AutoClicker:CreateTwoSlider({
+            Name = 'Block CPS',
+            Min = 1,
+            Max = 20,
+            DefaultMin = 12,
+            DefaultMax = 12,
+            Darker = true
+        })
+
+        SwingSwordToggle = AutoClicker:CreateToggle({
+            Name = 'Swing Sword',
+            Default = false,
+            Function = function(callback)
+                if SwordCPS.Object then SwordCPS.Object.Visible = callback end
+            end
+        })
+
+        SwordCPS = AutoClicker:CreateTwoSlider({
+            Name = 'Sword CPS',
+            Min = 1,
+            Max = 9,
+            DefaultMin = 7,
+            DefaultMax = 7,
+            Darker = true
+        })
+
+        task.defer(function()
+            if BlockCPS and BlockCPS.Object then
+                BlockCPS.Object.Visible = PlaceBlocksToggle and PlaceBlocksToggle.Enabled
+            end
+            if SwordCPS and SwordCPS.Object then
+                SwordCPS.Object.Visible = SwingSwordToggle and SwingSwordToggle.Enabled
+            end
+        end)
+    end
+end)  
 
 run(function()
     local KitRender
@@ -5663,7 +5802,7 @@ run(function()
 			switched = switchItem(item.tool, 0.05)
 			local targetBodyPart = ent.RootPart
 			local selfVelocity = entitylib.character.RootPart and entitylib.character.RootPart.Velocity or Vector3.zero
-			local targetVelocity = targetBodyPart.Velocity - selfVelocity
+			local targetVelocity = targetBodyPart.Velocity
 			local playerGravity = workspace.Gravity
 			local balloons = ent.Character and ent.Character:GetAttribute('InflatedBalloons')
 			if balloons and balloons > 0 then
@@ -5684,7 +5823,7 @@ run(function()
 			local bowRelY = bedwars.BowConstantsTable.RelY or 0
 			local bowRelZ = bedwars.BowConstantsTable.RelZ or 0
 			local newlook = CFrame.new(pos, targetBodyPart.Position) * CFrame.new(Vector3.new(bowRelX, bowRelY, bowRelZ))
-			local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, targetBodyPart.Position, targetVelocity, playerGravity, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new())
+			local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, targetBodyPart.Position, targetVelocity, playerGravity, ent.HipHeight, nil, RaycastParams.new())
 			if calc then
 				targetinfo.Targets[ent] = tick() + 1
 				task.spawn(function()
@@ -10970,9 +11109,17 @@ run(function()
 							bedwars.QueryUtil:setQueryIgnored(part, true)
 							part.Touched:Connect(function(v)
 								if v.Parent.Name == lplr.Name then
+									local bedStillExists = false
+									for _, child in workspace:GetDescendants() do
+										if child.Name == 'bed' and (child.Position - part.Position).Magnitude < 5 then
+											bedStillExists = true
+											break
+										end
+									end
+									if not bedStillExists then return end
 									if bedwars.AbilityController:canUseAbility('berserker_rage') then
 										bedwars.AbilityController:useAbility('berserker_rage')
-									end																																
+									end
 								end
 							end)
 						end
@@ -10982,7 +11129,7 @@ run(function()
 
 			AutoKit:Clean(function()
 				for i,v in workspace:GetChildren() do
-					if v:IsA("BasePart") and v.Name == "AutoKitRagnarPart" then
+					if v:IsA("BasePart") and v.Name == "AutoKitRagnarPartWMAEROV4" then
 						v:Destroy()
 					end
 				end
@@ -15623,6 +15770,11 @@ run(function()
 
 	local function doBreak(v)
 		hit += 1
+		if RagnarBreaker and RagnarBreaker.Enabled then
+			if store.equippedKit == 'berserker' and bedwars.AbilityController and bedwars.AbilityController:canUseAbility("berserker_rage") then
+				bedwars.AbilityController:useAbility('berserker_rage')
+			end
+		end
 		local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, wrappedHealthbar, InstantBreak.Enabled or AutoTool.Enabled)
 		if path and ShowPath and ShowPath.Enabled then
 			local placerTier = getPlacerTier(v)
@@ -15743,11 +15895,6 @@ run(function()
 			bestDist = dist
 		end
 		if not best then return false end
-		if RagnarBreaker and RagnarBreaker.Enabled then
-			if store.equippedKit == 'berserker' and bedwars.AbilityController and bedwars.AbilityController:canUseAbility("berserker_rage") then
-				bedwars.AbilityController:useAbility('berserker_rage')
-			end
-		end
 		return doBreak(best)
 	end
 
@@ -15937,10 +16084,29 @@ run(function()
 							else
 								local nearDist = math.huge
 								local nearBest = nil
+								local targetPos = nil
+								if best then
+									targetPos = best.Position
+								elseif Bed.Enabled and beds then
+									local bestBedDist = math.huge
+									for _, bed in beds do
+										if bed and bed.Parent then
+											local d = (bed.Position - localPosition).Magnitude
+											if d < bestBedDist then
+												bestBedDist = d
+												targetPos = bed.Position
+											end
+										end
+									end
+								end
 								for _, v in store.blocks do
 									if not v or not v.Parent then continue end
 									local dist = (v.Position - localPosition).Magnitude
 									if dist >= Range.Value or dist >= nearDist then continue end
+									if targetPos then
+										local distToTarget = (v.Position - targetPos).Magnitude
+										if distToTarget > Range.Value then continue end
+									end
 									if not passesChecks(v) then continue end
 									nearBest = v
 									nearDist = dist
@@ -15960,11 +16126,6 @@ run(function()
 								local pathBlock = findPathBlock(best.Position, localPosition)
 								if pathBlock then
 									best = pathBlock
-								end
-							end
-							if RagnarBreaker and RagnarBreaker.Enabled then
-								if store.equippedKit == 'berserker' and bedwars.AbilityController and bedwars.AbilityController:canUseAbility("berserker_rage") then
-									bedwars.AbilityController:useAbility('berserker_rage')
 								end
 							end
 							if not MouseDown or not MouseDown.Enabled or inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
