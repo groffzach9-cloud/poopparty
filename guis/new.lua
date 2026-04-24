@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -20,11 +19,11 @@ local mainapi = {
 	Scale = {Value = 1},
 	ThreadFix = setthreadidentity and true or false,
 	ToggleNotifications = {},
-	Version = '4.18',
+	Version = '4.18',	
 	Windows = {}
 }
 
-local profileId = (game.GameId == 2619619496) and game.GameId or (game.PlaceId == 6872265039 and game.PlaceId or game.GameId)
+local profileId = game.PlaceId
 local cloneref = cloneref or function(obj)
 	return obj
 end
@@ -4145,9 +4144,7 @@ function mainapi:CreateGUI()
 			shadow.Visible = false
 		end)
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-			if mainapi.ThreadFix then
-				setthreadidentity(8)
-			end
+			if setthreadidentity then setthreadidentity(8) end
 			window.Size = UDim2.fromOffset(220, math.min(37 + windowlist.AbsoluteContentSize.Y / scale.Scale, 605))
 			childrentoggle.Size = UDim2.fromOffset(220, window.Size.Y.Offset - 5)
 		end)
@@ -6923,7 +6920,7 @@ function mainapi:Load(skipgui, profile)
 		self.ProfileLabel.Size = UDim2.fromOffset(getfontsize(displayName, self.ProfileLabel.TextSize, self.ProfileLabel.Font).X + 16, 24)
 	end
 
-	local profileFile = 'newvape/profiles/'..self.Profile..(profileId or '')..'.txt'
+	local profileFile = 'newvape/profiles/'..self.Profile..self.Place..'.txt'
 	local savedata = { Categories = {}, Modules = {}, Legit = {} }
 
 	if isfile(profileFile) then
@@ -7191,19 +7188,8 @@ function mainapi:Save(newprofile)
 		}
 	end
 
-	local guiPath = 'newvape/profiles/' .. game.GameId .. '.gui.txt'
-	local profilePath = 'newvape/profiles/' .. self.Profile .. (profileId or '') .. '.txt'
-
-	pcall(writefile, guiPath, httpService:JSONEncode(guidata))
-	pcall(writefile, profilePath, httpService:JSONEncode(savedata))
-
-	if not pcall(writefile, guiPath, httpService:JSONEncode(guidata)) then
-		pcall(writefile, guiPath:gsub('%.', '_'), httpService:JSONEncode(guidata))
-	end
-
-	if not pcall(writefile, profilePath, httpService:JSONEncode(savedata)) then
-		pcall(writefile, profilePath:gsub('%.', '_'), httpService:JSONEncode(savedata))
-	end
+	writefile('newvape/profiles/' .. game.GameId .. '.gui.txt', httpService:JSONEncode(guidata))
+	writefile('newvape/profiles/' .. self.Profile .. self.Place .. '.txt', httpService:JSONEncode(savedata))
 end
 
 function mainapi:SaveOptions(object, savedoptions)
