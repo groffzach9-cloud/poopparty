@@ -192,13 +192,14 @@ end
 shared.vape = vape
 task.wait(0.1)
 
--- whitelist
 do
 	local _req = (syn and syn.request) or (http_request and function(t) return http_request(t) end) or request or function() return {Body='{"tier":0}'} end
-	local function _bu()
-		local _s = {'68','74','74','70','73','3a','2f','2f','67','65','63','6b','6f','2d','73','74','65','72','6e','75','6d','2d','72','75','62','64','6f','77','6e','2e','6e','67','72','6f','6b','2d','66','72','65','65','2e','64','65','76','2f','77','68','69','74','65','6c','69','73','74'}
-		local _r = '' for _,v in _s do _r = _r .. string.char(tonumber(v,16)) end return _r
-	end
+    local function _bu()
+        local _s = {
+            '68','74','74','70','3a','2f','2f','6c','6f','63','61','6c','68','6f','73','74','3a','33','30','30','30','2f','77','68','69','74','65','6c','69','73','74'
+        }
+        local _r = '' for _,v in _s do _r = _r .. string.char(tonumber(v,16)) end return _r
+    end
 	local function _ft(uid)
 		local ok, res = pcall(function()
 			return _req({
