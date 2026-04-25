@@ -70,14 +70,15 @@ local function downloadPremadeProfiles(commit)
         if ok and type(files) == 'table' then
             for _, file in pairs(files) do
                 if file.name and file.name:find('.txt') and file.name ~= 'commit.txt' then
-                    local filePath = 'newvape/profiles/premade/' .. file.name
-                    local dl = file.download_url or ('https://raw.githubusercontent.com/poopparty/poopparty/' .. commit .. '/profiles/premade/' .. file.name)
-                    local ds, dc = pcall(function()
-                        return game:HttpGet(dl, true)
-                    end)
-                    if ds and dc and dc ~= '404: Not Found' then
-                        writefile(filePath, dc)
-                    end
+					local baseName = (file.name:match('^(.-)%.txt$') or file.name):gsub('%d+$', '')
+					local fileId = (game.GameId == 2619619496) and game.GameId or game.PlaceId
+					local filePath = 'newvape/profiles/premade/' .. baseName .. tostring(fileId) .. '.txt'
+					local ds, dc = pcall(function()
+						return game:HttpGet(file.download_url, true)
+					end)
+					if ds and dc and dc ~= '404: Not Found' then
+						writefile(filePath, dc)
+					end
                 end
             end
         end
@@ -101,7 +102,7 @@ if not shared.VapeDeveloper then
 		end
 	end
 
-	if commit == 'main' or (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
+	if commit ~= 'main' and (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
 		wipeFolder('newvape')
 		wipeFolder('newvape/games')
 		wipeFolder('newvape/guis')
@@ -122,8 +123,8 @@ if not shared.VapeDeveloper then
 		end
 	end
 
-	pcall(downloadPremadeProfiles, commit)
 	writefile('newvape/profiles/commit.txt', commit)
+	pcall(downloadPremadeProfiles, commit)
 end
 
 return loadstring(downloadFile('newvape/main.lua'), 'main')({
