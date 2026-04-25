@@ -10,7 +10,7 @@ local mainapi = {
 	Loaded = false,
 	Libraries = {},
 	Modules = {},
-    Place = game.PlaceId,
+    Place = game.PlaceId == 6872265039 and game.PlaceId or game.GameId,
 	Profile = 'default',
 	Profiles = {},
 	RainbowSpeed = {Value = 1},
