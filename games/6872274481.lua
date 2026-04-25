@@ -9375,7 +9375,7 @@ run(function()
 		Default = true
 	})
 end)
-	
+	--9568
 run(function()
     local NameTags
     local Targets
@@ -9546,8 +9546,8 @@ run(function()
 
             if DeviceIcon and DeviceIcon.Enabled and ent.Player then
                 local function getPlayerDevice(plr)
-                    local val = plr:GetAttribute('UserInputType')
-                    if not val then return nil end
+                    local val = plr:GetAttribute('UserInputType') or 'Unknown'
+                    if not val then return 'Unknown' end
                     val = val:upper()
                     if val == 'MOBILE' then return 'Mobile'
                     elseif val == 'GAMEPAD' or val == 'CONTROLLER' then return 'Controller'
@@ -9555,7 +9555,7 @@ run(function()
                 end
                 local deviceType = getPlayerDevice(ent.Player)
                 if deviceType then
-                    local deviceEmoji = {Mobile = '📱', PC = '🖥', Controller = '🎮'}
+                    local deviceEmoji = {Mobile = '📱', PC = '🖥', Controller = '🎮', Unknown = '❔'}
                     local deviceLabel = Instance.new('TextLabel')
                     deviceLabel.Name = 'DeviceIcon'
                     deviceLabel.Size = udim2fromOffset(22, 22)
