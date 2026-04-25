@@ -1,3 +1,4 @@
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -130,6 +131,9 @@ getgenv()._aeroTierReady = true
 getgenv().getAeroTier = function(...)
     return 0
 end  
+local function getAccountTier(...)
+	return 0
+end
 
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
@@ -30596,14 +30600,14 @@ run(function()
 				local function onLaunchTriggered(child)
 					local humanoid = entitylib.character.Humanoid
 					if not humanoid then return end
-					if Speed.Enabled and Fly.Enabled then
-						Fly:Toggle(false)
+					if vape.Modules.Speed.Enabled and vape.Modules.Fly.Enabled then
+						vape.Modules.Fly:Toggle(false)
 						task.wait(0.025)
-						Speed:Toggle(false)
-					elseif Speed.Enabled then
-						Speed:Toggle(false)
-					elseif Fly.Enabled then
-						Fly:Toggle(false)
+						vape.Modules.Speed:Toggle(false)
+					elseif vape.Modules.Speed.Enabled then
+						vape.Modules.Speed:Toggle(false)
+					elseif vape.Modules.Fly.Enabled then
+						vape.Modules.Fly:Toggle(false)
 					end
 					if AS.Enabled then
 						local pickaxe = getPickaxeSlot()
