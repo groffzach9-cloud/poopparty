@@ -128,7 +128,7 @@ local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
 local originalKnit 
 local _tierCache = {}
 local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
-local swap_aurl = false
+local swap_aurl = true
 
 local function _bu()
     local tbls = {
