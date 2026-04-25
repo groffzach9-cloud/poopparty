@@ -70,9 +70,8 @@ end
 local function migrateProfiles()
 	if isfile('newvape/profiles/migrated_placeid.txt') then return end
 
-	local oldId = tostring((game.GameId == 2619619496) and game.GameId
-		or (game.PlaceId == 6872265039 and game.PlaceId or game.GameId))
-	local newId = tostring((game.GameId == 2619619496) and game.GameId or game.PlaceId)
+    local oldId = tostring(game.GameId)
+    local newId = tostring(game.PlaceId)
 
 	if oldId == newId then
 		pcall(writefile, 'newvape/profiles/migrated_placeid.txt', 'done')
