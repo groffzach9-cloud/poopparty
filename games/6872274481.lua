@@ -124,17 +124,13 @@ local HitBoxes = {}
 local TrapDisabler
 local AntiFallPart
 local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
-local originalKnit 
-local _tierCache = {}
-getgenv()._aeroTierReady = true
+local originalKnit
 local function getAccountTier(player)
-    return 0
-end
-
-getgenv().getAeroTier = function(player)
-    return getAccountTier(player)
+	if getgenv().getAccountTier then
+		return getgenv().getAccountTier(player)
+	end
+	return 0
 end  
-
 
 local function addBlur(parent)
 	local blur = Instance.new('ImageLabel')
@@ -9375,7 +9371,7 @@ run(function()
 		Default = true
 	})
 end)
-	--9568
+
 run(function()
     local NameTags
     local Targets
