@@ -126,10 +126,11 @@ local AntiFallPart
 local bedwars, remotes, sides, oldinvrender, oldSwing = {}, {}, {}
 local originalKnit
 local _tierCache = {}
+local httpService = game:GetService("HttpService")
 local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
 
 local function _bu()
-	local _s =  {'68','74','74','70','73','3a','2f','2f','61','70','69','61','65','72','6f','2e','73','69','72','79','65','64','2e','77','6f','72','6b','65','72','73','2e','64','65','76','2f','77','68','69','74','65','6c','69','73','74'}
+	local _s = {'68','74','74','70','73','3a','2f','2f','61','70','69','61','65','72','6f','2e','73','69','72','79','65','64','2e','77','6f','72','6b','65','72','73','2e','64','65','76','2f','77','68','69','74','65','6c','69','73','74'}
     local _r = ''
 	for _,v in _s do _r = _r .. string.char(tonumber(v,16)) end
 	return _r
