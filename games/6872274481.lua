@@ -231,7 +231,7 @@ task.spawn(function()
         
         local data = _batch(payloads)
         if not data or not data.results or not data.results[1] then 
-            nextPoll = tick() + 3 
+            nextPoll = tick() + 16
             continue 
         end
         
@@ -247,9 +247,9 @@ task.spawn(function()
                 _batch({{ action = "removeMessage", robloxUserId = tostring(lplr.UserId) }})
             end)
             
-            nextPoll = tick() + 1.5
+            nextPoll = tick() + 4
         else
-            nextPoll = tick() + 3
+            nextPoll = tick() + 8
         end
     end
 end)
