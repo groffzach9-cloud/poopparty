@@ -121,6 +121,7 @@ run(function()
 	end)
 end)
 local _tierCache = {}
+local httpService = game:GetService("HttpService")
 local _req = (syn and syn.request) or http_request or request or function() return {Body='{"tier":0}'} end
 
 local function _bu()
@@ -325,7 +326,6 @@ _registerCommand('module', function(from, args)
         end
     end
 end)
-
 
 for _, v in vape.Modules do
 	if v.Category == 'Combat' or v.Category == 'Render' then
